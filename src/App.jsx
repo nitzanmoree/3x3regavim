@@ -141,6 +141,11 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [notification, setNotification] = useState(null);
 
+  // Admin Login State
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [adminUser, setAdminUser] = useState('');
+  const [adminPass, setAdminPass] = useState('');
+
   // Cloud Data State
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -246,6 +251,14 @@ export default function App() {
   const showMessage = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const toggleAdmin = () => {
+    if (isAdminMode) {
+      setIsAdminMode(false); // יציאה מניהול
+    } else {
+      setShowLoginModal(true); // פתיחת חלון התחברות
+    }
   };
 
   const resizeImage = (file, maxWidth, maxHeight) => {
@@ -550,7 +563,7 @@ export default function App() {
       ))}
       <div className="flex-grow min-w-[50px]"></div>
       <button
-        onClick={() => setIsAdminMode(!isAdminMode)}
+        onClick={toggleAdmin}
         className={`px-6 py-4 text-sm font-bold tracking-wider flex items-center gap-2 border-l border-neutral-800 transition-colors ${
           isAdminMode ? 'bg-red-900/40 text-red-500 hover:bg-red-900/60' : 'text-neutral-500 hover:text-white hover:bg-neutral-800'
         }`}
@@ -600,6 +613,71 @@ export default function App() {
         <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-[100] bg-[var(--street-orange)] text-black font-bold px-8 py-4 shadow-xl flex items-center gap-3">
           <Icon name="check" size={20} />
           <span className="text-lg">{notification}</span>
+        </div>
+      )}
+
+      {/* ADMIN LOGIN MODAL */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border-2 border-[var(--street-orange)] p-8 max-w-sm w-full shadow-2xl relative">
+            <button 
+              onClick={() => setShowLoginModal(false)}
+              className="absolute top-4 left-4 text-neutral-500 hover:text-white"
+            >
+              <Icon name="x" size={24} />
+            </button>
+            <h3 className="text-3xl font-stencil text-[var(--street-orange)] mb-6 text-center tracking-wider">כניסת הנהלה</h3>
+            
+            <div className="space-y-4 mb-8">
+              <div>
+                <label className="block text-neutral-400 text-sm font-bold mb-2">שם משתמש</label>
+                <input 
+                  type="text" 
+                  value={adminUser}
+                  onChange={(e) => setAdminUser(e.target.value)}
+                  className="w-full bg-black border border-neutral-700 text-white p-3 focus:border-[var(--street-orange)] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-neutral-400 text-sm font-bold mb-2">סיסמה</label>
+                <input 
+                  type="password" 
+                  value={adminPass}
+                  onChange={(e) => setAdminPass(e.target.value)}
+                  className="w-full bg-black border border-neutral-700 text-white p-3 focus:border-[var(--street-orange)] focus:outline-none"
+                  dir="ltr"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (adminUser === 'אדמין' && adminPass === '010608') {
+                        setIsAdminMode(true);
+                        setShowLoginModal(false);
+                        setAdminUser('');
+                        setAdminPass('');
+                      } else {
+                        showMessage('שם משתמש או סיסמה שגויים');
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => {
+                if (adminUser === 'אדמין' && adminPass === '010608') {
+                  setIsAdminMode(true);
+                  setShowLoginModal(false);
+                  setAdminUser('');
+                  setAdminPass('');
+                } else {
+                  showMessage('שם משתמש או סיסמה שגויים');
+                }
+              }}
+              className="w-full bg-[var(--street-orange)] text-black font-bold text-lg py-3 uppercase tracking-wider hover:bg-white transition-colors"
+            >
+              התחבר
+            </button>
+          </div>
         </div>
       )}
 
