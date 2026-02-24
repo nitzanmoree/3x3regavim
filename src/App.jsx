@@ -487,10 +487,10 @@ export default function App() {
     
     const top4 = standings.slice(0, 4);
     const semi1 = {
-      id: 'ff_semi1', roundName: 'חצי גמר 1', roundDates: 'אירוע שיא - פיינל פור', roundIndex: 1000, homeTeam: top4[0], awayTeam: top4[3], homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'semi'
+      id: 'ff_semi1', roundName: 'חצי גמר (מקום 1 נגד 4)', roundDates: 'אירוע שיא', roundIndex: 1000, homeTeam: top4[0], awayTeam: top4[3], homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'semi'
     };
     const semi2 = {
-      id: 'ff_semi2', roundName: 'חצי גמר 2', roundDates: 'אירוע שיא - פיינל פור', roundIndex: 1000, homeTeam: top4[1], awayTeam: top4[2], homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'semi'
+      id: 'ff_semi2', roundName: 'חצי גמר (מקום 2 נגד 3)', roundDates: 'אירוע שיא', roundIndex: 1000, homeTeam: top4[1], awayTeam: top4[2], homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'semi'
     };
 
     const batch = writeBatch(db);
@@ -499,23 +499,36 @@ export default function App() {
     batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { leagueStage: 'finalFour' });
     
     await batch.commit();
-    setActiveTab('schedule');
     showMessage('הפיינל פור יצא לדרך!');
   };
 
-  const createFinalMatch = async () => {
+  const createFinals = async () => {
     const semis = matches.filter(m => m.type === 'finalFour' && m.stage === 'semi' && m.isPlayed);
     if (semis.length !== 2) return showMessage('יש לסיים את שני משחקי חצי הגמר קודם');
 
-    const winner1 = semis[0].homeScore > semis[0].awayScore ? semis[0].homeTeam : semis[0].awayTeam;
-    const winner2 = semis[1].homeScore > semis[1].awayScore ? semis[1].homeTeam : semis[1].awayTeam;
+    const s1 = semis.find(m => m.id === 'ff_semi1');
+    const s2 = semis.find(m => m.id === 'ff_semi2');
+
+    const winner1 = s1.homeScore > s1.awayScore ? s1.homeTeam : s1.awayTeam;
+    const loser1 = s1.homeScore > s1.awayScore ? s1.awayTeam : s1.homeTeam;
+
+    const winner2 = s2.homeScore > s2.awayScore ? s2.homeTeam : s2.awayTeam;
+    const loser2 = s2.homeScore > s2.awayScore ? s2.awayTeam : s2.homeTeam;
 
     const finalMatch = {
-      id: 'ff_final', roundName: 'הגמר הגדול!', roundDates: 'הקרב על האליפות', roundIndex: 1001, homeTeam: winner1, awayTeam: winner2, homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'final'
+      id: 'ff_final', roundName: 'הגמר הגדול!', roundDates: 'הקרב על האליפות', roundIndex: 1002, homeTeam: winner1, awayTeam: winner2, homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'final'
     };
 
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', finalMatch.id), finalMatch);
-    showMessage('משחק הגמר נוצר בהצלחה!');
+    const thirdPlaceMatch = {
+      id: 'ff_third', roundName: 'הקרב על המקום השלישי', roundDates: 'משחק מקדים', roundIndex: 1001, homeTeam: loser1, awayTeam: loser2, homeScore: '', awayScore: '', isPlayed: false, type: 'finalFour', stage: 'thirdPlace'
+    };
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', finalMatch.id), finalMatch);
+    batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', thirdPlaceMatch.id), thirdPlaceMatch);
+    await batch.commit();
+
+    showMessage('משחקי הגמר והמקום השלישי נוצרו בהצלחה!');
   };
 
   const resetLeagueFull = async () => {
@@ -537,19 +550,27 @@ export default function App() {
 
   // --- COMPONENTS ---
   const standings = calculateStandings();
-  const groupedMatches = matches.reduce((acc, m) => {
+  
+  // Separation of matches for tabs
+  const regularMatches = matches.filter(m => m.type === 'regular');
+  const groupedMatches = regularMatches.reduce((acc, m) => {
     if (!acc[m.roundName]) acc[m.roundName] = { dates: m.roundDates, matches: [], index: m.roundIndex };
     acc[m.roundName].matches.push(m);
     return acc;
   }, {});
-
   const sortedGroups = Object.keys(groupedMatches).sort((a, b) => groupedMatches[a].index - groupedMatches[b].index);
+
+  const playoffMatches = matches.filter(m => m.type === 'finalFour');
+  const semisMatches = playoffMatches.filter(m => m.stage === 'semi');
+  const finalsMatches = playoffMatches.filter(m => m.stage === 'final' || m.stage === 'thirdPlace').sort((a, b) => a.roundIndex - b.roundIndex);
+
 
   const renderTabs = () => (
     <div className="flex flex-wrap justify-center bg-[#111] border-b border-neutral-800">
       {[
         { id: 'standings', label: 'טבלת הליגה' },
         { id: 'schedule', label: 'לוח משחקים' },
+        { id: 'playoffs', label: 'פיינל פור' },
         { id: 'teams', label: 'קבוצות' },
         { id: 'gallery', label: 'גלריה' },
       ].map(tab => (
@@ -746,28 +767,9 @@ export default function App() {
                 <Icon name="calendar-days" className="text-[var(--street-orange)]" size={28} />
                 <h2 className="text-4xl font-stencil text-white tracking-wide">זירת הקרבות</h2>
               </div>
-              
-              {isAdminMode && leagueStage === 'regular' && (
-                <button 
-                  onClick={startFinalFour}
-                  className="bg-white text-black font-bold px-6 py-2 border-2 border-transparent hover:border-white hover:bg-black hover:text-white transition-all text-sm uppercase tracking-wider"
-                >
-                  הפעל פיינל פור
-                </button>
-              )}
-              
-              {isAdminMode && leagueStage === 'finalFour' && matches.filter(m => m.stage === 'semi' && m.isPlayed).length === 2 && !matches.some(m => m.stage === 'final') && (
-                <button 
-                  onClick={createFinalMatch}
-                  className="bg-[var(--street-yellow)] text-black font-bold px-6 py-2 border-2 border-[var(--street-yellow)] hover:bg-black hover:text-[var(--street-yellow)] transition-all text-sm uppercase tracking-wider flex items-center gap-2"
-                >
-                  <Icon name="play" size={16} />
-                  צור משחק גמר
-                </button>
-              )}
             </div>
 
-            {matches.length === 0 ? (
+            {regularMatches.length === 0 ? (
               <div className="text-center py-20 street-card">
                 <div className="flex justify-center mb-4"><Icon name="shield-alert" size={48} className="text-neutral-600" /></div>
                 <h3 className="text-xl font-bold text-neutral-400 mb-2">לוח המשחקים טרם נקבע</h3>
@@ -845,7 +847,7 @@ export default function App() {
                                   >
                                     עדכן תוצאה עכשיו
                                   </button>
-                                  {match.type === 'regular' && match.roundName !== 'שבוע השלמות' && isAdminMode && (
+                                  {isAdminMode && (
                                     <button 
                                       onClick={() => moveToMakeupRound(match.id)}
                                       className="px-4 bg-transparent text-neutral-400 text-sm font-bold border border-neutral-700 hover:text-white hover:border-neutral-500 transition-colors"
@@ -875,6 +877,144 @@ export default function App() {
                     </div>
                     <div className="street-card p-6 text-center border-dashed border-neutral-700">
                       <p className="font-bold text-neutral-500">המגרש פנוי. אין משחקי השלמה בינתיים.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* === PLAYOFFS TAB === */}
+        {activeTab === 'playoffs' && (
+          <div className="space-y-8 animate-fade-in relative">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-2 border-neutral-800 pb-4">
+              <div className="flex items-center gap-3">
+                <Icon name="trophy" className="text-[var(--street-orange)]" size={28} />
+                <h2 className="text-4xl font-stencil text-white tracking-wide">פיינל פור</h2>
+              </div>
+              
+              {isAdminMode && leagueStage === 'regular' && regularMatches.length > 0 && (
+                <button 
+                  onClick={startFinalFour}
+                  className="bg-white text-black font-bold px-6 py-2 border-2 border-transparent hover:border-white hover:bg-black hover:text-white transition-all text-sm uppercase tracking-wider"
+                >
+                  הפעל פיינל פור (1 נגד 4 | 2 נגד 3)
+                </button>
+              )}
+              
+              {isAdminMode && leagueStage === 'finalFour' && semisMatches.filter(m => m.isPlayed).length === 2 && finalsMatches.length === 0 && (
+                <button 
+                  onClick={createFinals}
+                  className="bg-[var(--street-yellow)] text-black font-bold px-6 py-2 border-2 border-[var(--street-yellow)] hover:bg-black hover:text-[var(--street-yellow)] transition-all text-sm uppercase tracking-wider flex items-center gap-2"
+                >
+                  <Icon name="play" size={16} />
+                  צור משחקי גמר ומקום שלישי
+                </button>
+              )}
+            </div>
+
+            {leagueStage !== 'finalFour' ? (
+              <div className="text-center py-20 street-card">
+                <div className="flex justify-center mb-4"><Icon name="shield-alert" size={48} className="text-neutral-600" /></div>
+                <h3 className="text-xl font-bold text-neutral-400 mb-2">הפיינל פור טרם החל</h3>
+                <p className="text-neutral-500">המתינו לסיום העונה הסדירה.</p>
+              </div>
+            ) : (
+              <div className="space-y-12">
+                
+                {/* Semi Finals */}
+                {semisMatches.length > 0 && (
+                  <div className="space-y-4 relative">
+                    <div className="flex items-baseline gap-4 mb-4">
+                      <h3 className="text-3xl font-stencil text-[var(--street-orange)] tracking-wider">חצי גמר</h3>
+                      <div className="h-px bg-neutral-800 flex-grow ml-4"></div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {semisMatches.map((match) => (
+                        <div key={match.id} className={`street-card p-5 ${match.isPlayed ? 'border-neutral-700 bg-neutral-900/50' : 'border-[var(--street-orange)]'}`}>
+                          <div className="absolute top-0 left-0 bg-[var(--street-orange)] text-black text-xs font-bold px-2 py-1 uppercase tracking-widest">{match.roundName}</div>
+                          <div className="flex flex-col gap-4 relative z-10 mt-4">
+                            <div className="flex justify-between items-center text-center">
+                              <div className="flex-1"><h4 className="font-bold text-xl text-white">{match.homeTeam.name}</h4></div>
+                              <div className="flex-shrink-0 px-4">
+                                {match.isPlayed ? (
+                                  <div className="flex items-center justify-center gap-3 bg-black px-4 py-2 border border-neutral-700">
+                                    <span className={`text-2xl font-black ${match.homeScore > match.awayScore ? 'text-[var(--street-orange)]' : 'text-neutral-500'}`}>{match.homeScore}</span>
+                                    <span className="text-neutral-600 font-bold">-</span>
+                                    <span className={`text-2xl font-black ${match.awayScore > match.homeScore ? 'text-[var(--street-orange)]' : 'text-neutral-500'}`}>{match.awayScore}</span>
+                                  </div>
+                                ) : (
+                                  <span className="font-stencil text-2xl text-neutral-600 tracking-widest">VS</span>
+                                )}
+                              </div>
+                              <div className="flex-1"><h4 className="font-bold text-xl text-white">{match.awayTeam.name}</h4></div>
+                            </div>
+                            {!match.isPlayed && (
+                              <div className="mt-4 pt-4 border-t border-neutral-800 flex flex-col gap-4">
+                                <div className="flex items-center justify-center gap-4">
+                                  <input type="number" min="0" placeholder="0" id={`home_${match.id}`} className="w-16 h-12 bg-black border border-neutral-700 text-center text-xl font-bold text-white focus:border-[var(--street-orange)] focus:outline-none" />
+                                  <span className="text-sm font-bold text-neutral-500">תוצאה</span>
+                                  <input type="number" min="0" placeholder="0" id={`away_${match.id}`} className="w-16 h-12 bg-black border border-neutral-700 text-center text-xl font-bold text-white focus:border-[var(--street-orange)] focus:outline-none" />
+                                </div>
+                                <div className="flex gap-3">
+                                  <button onClick={() => updateScore(match.id, document.getElementById(`home_${match.id}`).value, document.getElementById(`away_${match.id}`).value)} className="flex-1 bg-neutral-800 text-white py-2 text-sm font-bold border border-neutral-700 hover:bg-[var(--street-orange)] hover:border-[var(--street-orange)] transition-colors">
+                                    עדכן תוצאה עכשיו
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Finals & Third Place */}
+                {finalsMatches.length > 0 && (
+                  <div className="space-y-4 relative">
+                    <div className="flex items-baseline gap-4 mb-4">
+                      <h3 className="text-3xl font-stencil text-[var(--street-orange)] tracking-wider">משחקי הכרעה</h3>
+                      <div className="h-px bg-neutral-800 flex-grow ml-4"></div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {finalsMatches.map((match) => (
+                        <div key={match.id} className={`street-card p-5 ${match.isPlayed ? 'border-neutral-700 bg-neutral-900/50' : 'border-[var(--street-orange)]'}`}>
+                          <div className="absolute top-0 left-0 bg-[var(--street-orange)] text-black text-xs font-bold px-2 py-1 uppercase tracking-widest">{match.roundName}</div>
+                          <div className="flex flex-col gap-4 relative z-10 mt-4">
+                            <div className="flex justify-between items-center text-center">
+                              <div className="flex-1"><h4 className="font-bold text-xl text-white">{match.homeTeam.name}</h4></div>
+                              <div className="flex-shrink-0 px-4">
+                                {match.isPlayed ? (
+                                  <div className="flex items-center justify-center gap-3 bg-black px-4 py-2 border border-neutral-700">
+                                    <span className={`text-2xl font-black ${match.homeScore > match.awayScore ? 'text-[var(--street-orange)]' : 'text-neutral-500'}`}>{match.homeScore}</span>
+                                    <span className="text-neutral-600 font-bold">-</span>
+                                    <span className={`text-2xl font-black ${match.awayScore > match.homeScore ? 'text-[var(--street-orange)]' : 'text-neutral-500'}`}>{match.awayScore}</span>
+                                  </div>
+                                ) : (
+                                  <span className="font-stencil text-2xl text-neutral-600 tracking-widest">VS</span>
+                                )}
+                              </div>
+                              <div className="flex-1"><h4 className="font-bold text-xl text-white">{match.awayTeam.name}</h4></div>
+                            </div>
+                            {!match.isPlayed && (
+                              <div className="mt-4 pt-4 border-t border-neutral-800 flex flex-col gap-4">
+                                <div className="flex items-center justify-center gap-4">
+                                  <input type="number" min="0" placeholder="0" id={`home_${match.id}`} className="w-16 h-12 bg-black border border-neutral-700 text-center text-xl font-bold text-white focus:border-[var(--street-orange)] focus:outline-none" />
+                                  <span className="text-sm font-bold text-neutral-500">תוצאה</span>
+                                  <input type="number" min="0" placeholder="0" id={`away_${match.id}`} className="w-16 h-12 bg-black border border-neutral-700 text-center text-xl font-bold text-white focus:border-[var(--street-orange)] focus:outline-none" />
+                                </div>
+                                <div className="flex gap-3">
+                                  <button onClick={() => updateScore(match.id, document.getElementById(`home_${match.id}`).value, document.getElementById(`away_${match.id}`).value)} className="flex-1 bg-neutral-800 text-white py-2 text-sm font-bold border border-neutral-700 hover:bg-[var(--street-orange)] hover:border-[var(--street-orange)] transition-colors">
+                                    עדכן תוצאה עכשיו
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
