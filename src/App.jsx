@@ -29,7 +29,8 @@ const Icon = ({ name, size = 24, className = '', color = 'ffffff' }) => {
     menu: 'menu',
     chevronDown: 'chevron-down',
     zap: 'zap',
-    logOut: 'log-out'
+    logOut: 'log-out',
+    rocket: 'rocket'
   };
   
   const cleanColor = color.replace('#', '');
@@ -91,32 +92,21 @@ body {
   letter-spacing: 2px;
 }
 
+/* Header Area with Image Background */
 .header-area {
-  padding: 5rem 1rem 4rem;
-  text-align: center;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
   position: relative;
-}
-
-.title-box {
-  display: inline-block;
-  padding: 1.2rem 2.5rem;
   background: #000;
-  border: 4px solid #ffffff;
-  box-shadow: 12px 12px 0px var(--street-orange);
-  transform: rotate(-1.5deg);
+  border-bottom: 5px solid var(--street-orange);
 }
 
-.graffiti-main {
-  font-size: 5.5rem;
-  line-height: 0.85;
-  text-transform: uppercase;
-  color: #ffffff;
-  text-shadow: 2px 2px 0px var(--street-orange);
-}
-
-@media (max-width: 768px) {
-  .graffiti-main { font-size: 3.2rem; }
-  .header-area { padding: 3rem 1rem 2rem; }
+.header-image {
+  width: 100%;
+  max-height: 500px;
+  object-fit: cover;
+  display: block;
 }
 
 .nav-container {
@@ -156,7 +146,6 @@ body {
 
 .street-card:hover {
   border-color: var(--street-orange);
-  box-shadow: 6px 6px 0px var(--street-orange);
 }
 
 .tape-label {
@@ -169,7 +158,6 @@ body {
   transform: rotate(1deg);
   margin-bottom: 1.2rem;
   border-left: 4px solid var(--street-orange);
-  letter-spacing: 1px;
 }
 
 .rule-strip {
@@ -184,15 +172,6 @@ body {
   border: 2px solid var(--street-yellow);
 }
 
-.animate-in {
-  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .mobile-active-label {
   background: #000;
   padding: 0.5rem 1rem;
@@ -203,8 +182,20 @@ body {
   letter-spacing: 1px;
 }
 
-.text-bright { color: #ffffff !important; }
-.text-dim { color: #aaaaaa !important; }
+.animate-in {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.admin-launch-pad {
+  background: linear-gradient(45deg, #1a1a1a, #000);
+  border: 3px solid var(--street-yellow);
+  box-shadow: 0 0 20px rgba(255, 179, 0, 0.2);
+}
 `;
 
 export default function App() {
@@ -304,6 +295,65 @@ export default function App() {
     await batch.commit(); setIsDBReady(true);
   };
 
+  // --- LEAGUE GENERATION LOGIC ---
+  const generateLeagueSchedule = async () => {
+    if (teams.length < 2) return showMessage('צריך לפחות 2 קבוצות כדי להתחיל ליגה');
+    if (!window.confirm(`האם להוציא את הליגה לדרך עם ${teams.length} קבוצות?`)) return;
+
+    const batch = writeBatch(db);
+    const teamList = [...teams];
+    if (teamList.length % 2 !== 0) teamList.push({ id: 'bye', name: 'מנוחה' });
+
+    const numTeams = teamList.length;
+    const numRounds = numTeams - 1;
+    const matchesPerRound = numTeams / 2;
+
+    const startDate = new Date();
+    // Round to nearest Sunday or chosen start day (optional)
+    
+    for (let round = 0; round < numRounds; round++) {
+      const roundDate = new Date(startDate);
+      roundDate.setDate(startDate.getDate() + (round * 7));
+      const dateStr = roundDate.toLocaleDateString('he-IL');
+
+      for (let i = 0; i < matchesPerRound; i++) {
+        const home = teamList[i];
+        const away = teamList[numTeams - 1 - i];
+
+        if (home.id !== 'bye' && away.id !== 'bye') {
+          const matchId = `m_${round}_${i}`;
+          batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', matchId), {
+            homeTeam: home,
+            awayTeam: away,
+            homeScore: '',
+            awayScore: '',
+            isPlayed: false,
+            roundName: `מחזור ${round + 1}`,
+            roundDates: dateStr,
+            roundIndex: round,
+            type: 'regular'
+          });
+        }
+      }
+      // Rotate for Round Robin (fixed index 0)
+      teamList.splice(1, 0, teamList.pop());
+    }
+
+    const lastRoundDate = new Date(startDate);
+    lastRoundDate.setDate(startDate.getDate() + (numRounds * 7));
+    const makeupDateStr = lastRoundDate.toLocaleDateString('he-IL');
+
+    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), {
+      leagueStage: 'regular',
+      leagueStartDate: startDate.toISOString(),
+      makeupDates: makeupDateStr
+    });
+
+    await batch.commit();
+    showMessage('הליגה יצאה לדרך! לוח המשחקים נוצר');
+    setActiveTab('schedule');
+  };
+
   const handleRegisterTeam = async (e) => {
     e.preventDefault();
     if (leagueStage !== 'registration') return showMessage('ההרשמה סגורה');
@@ -345,6 +395,17 @@ export default function App() {
     setActiveTab('hallOfFame');
   };
 
+  const resetSeasonOnly = async () => {
+    if(!window.confirm('זה ינקה את העונה הנוכחית. היכל התהילה יישמר. להמשיך?')) return;
+    const batch = writeBatch(db);
+    matches.forEach(m => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'matches', m.id)));
+    teams.forEach(t => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'teams', t.id)));
+    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { leagueStage: 'registration', leagueStartDate: '', makeupDates: '' });
+    await batch.commit();
+    showMessage('העונה אופסה. היכל התהילה נשמר!');
+    setActiveTab('standings');
+  };
+
   if (!isDBReady) return <div className="min-h-screen bg-black flex items-center justify-center text-[var(--street-orange)] font-stencil text-5xl animate-pulse uppercase">טוען...</div>;
 
   const finalMatch = matches.find(m => m.id === 'ff_final');
@@ -354,34 +415,21 @@ export default function App() {
     <div className="min-h-screen pb-20">
       <style>{customStyles}</style>
 
-      {/* HEADER */}
+      {/* HEADER WITH IMAGE */}
       <header className="header-area">
-        <div className="title-box">
-          <h1 className="font-stencil graffiti-main">
-            STREETBALL <span className="text-[var(--street-orange)]">REGAVIM</span>
-          </h1>
-        </div>
-        <div className="mt-8 flex justify-center items-center gap-4 opacity-50">
-          <div className="h-px w-12 bg-white"></div>
-          <Icon name="zap" size={20} color="#ff5722" />
-          <span className="font-stencil text-2xl uppercase tracking-[4px]">Elite 3x3 League</span>
-          <Icon name="zap" size={20} color="#ff5722" />
-          <div className="h-px w-12 bg-white"></div>
-        </div>
+        <img src="https://firebasestorage.googleapis.com/v0/b/streetballregavim.firebasestorage.app/o/headers%2F%D7%A1%D7%98%D7%A8%D7%99%D7%98%D7%91%D7%95%D7%9C%20%D7%A8%D7%92%D7%91%D7%99%D7%9D.jpg?alt=media" alt="סטריטבול רגבים" className="header-image" onError={(e) => e.target.src="https://via.placeholder.com/1200x400/000000/FFFFFF?text=STREETBALL+REGAVIM"} />
       </header>
 
       {/* NAV */}
       <nav className="nav-container sticky top-0 z-50 shadow-2xl">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 md:px-0">
           
-          {/* Mobile Label */}
           <div className="md:hidden flex items-center gap-3">
              <div className="mobile-active-label">
                 {activeTabObj?.l}
              </div>
           </div>
 
-          {/* Desktop Tabs */}
           <div className="hidden md:flex flex-1 justify-center">
             {tabs.map(t => (
               <button 
@@ -393,7 +441,6 @@ export default function App() {
             ))}
           </div>
 
-          {/* Controls */}
           <div className="flex items-center">
             <button 
               onClick={toggleAdmin} 
@@ -411,7 +458,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Mobile Sidebar */}
         {isMenuOpen && (
           <div className="md:hidden bg-black border-t border-neutral-800 animate-in p-2">
             <div className="grid grid-cols-1 gap-1">
@@ -439,11 +485,26 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto p-4 mt-8">
         
-        {/* STANDINGS */}
+        {/* STANDINGS & ADMIN LAUNCH PAD */}
         {activeTab === 'standings' && (
-          <div className="animate-in">
-            <div className="tape-label">דירוג הקבוצות</div>
-            <div className="street-card overflow-x-auto">
+          <div className="animate-in space-y-8">
+            {/* ADMIN LEAGUE LAUNCHER */}
+            {isAdminMode && leagueStage === 'registration' && (
+              <div className="admin-launch-pad p-8 rounded-lg text-center animate-pulse">
+                <Icon name="rocket" size={48} color="#ffb300" className="mb-4 mx-auto" />
+                <h3 className="text-3xl font-stencil text-white mb-2 uppercase">מוכנים להזניק את העונה?</h3>
+                <p className="text-neutral-400 font-bold mb-6">ישנן {teams.length} קבוצות רשומות כרגע. לחיצה על הכפתור תבצע הגרלת לוח משחקים ותנעל את ההרשמה.</p>
+                <button 
+                  onClick={generateLeagueSchedule}
+                  className="bg-[var(--street-yellow)] text-black font-black px-12 py-4 rounded uppercase text-xl hover:bg-white transition-all shadow-2xl"
+                >
+                  הוצא ליגה לדרך!
+                </button>
+              </div>
+            )}
+
+            <div className="tape-label">דירוג הקבוצות - עונה סדירה</div>
+            <div className="street-card overflow-x-auto rounded-lg">
               <table className="w-full text-right min-w-[600px]">
                 <thead className="bg-black/80 border-b border-neutral-800 text-neutral-400 text-xs font-black uppercase">
                   <tr><th className="p-6">דירוג</th><th className="p-6 text-right">קבוצה</th><th className="p-6 text-center">נק'</th><th className="p-6 text-center">נצ'</th><th className="p-6 text-center">הפ'</th><th className="p-6 text-center">הפרש</th></tr>
@@ -451,7 +512,7 @@ export default function App() {
                 <tbody className="divide-y divide-neutral-900">
                   {standings.map((t, i) => (
                     <tr key={t.id} className="group hover:bg-white/[0.02] transition-all">
-                      <td className="p-6 font-stencil text-3xl text-neutral-600 group-hover:text-[var(--street-orange)]">0{i+1}</td>
+                      <td className="p-6 font-stencil text-3xl text-neutral-700 group-hover:text-[var(--street-orange)]">0{i+1}</td>
                       <td className="p-6 text-2xl font-black text-white">{t.name}</td>
                       <td className="p-6 text-center font-stencil text-4xl text-[var(--street-orange)]">{t.points}</td>
                       <td className="p-6 text-center font-black text-white">{t.wins}</td>
@@ -459,10 +520,43 @@ export default function App() {
                       <td className={`p-6 text-center font-black text-xl ${t.diff >= 0 ? 'text-green-500' : 'text-red-500'}`} dir="ltr">{t.diff > 0 ? `+${t.diff}` : t.diff}</td>
                     </tr>
                   ))}
+                  {standings.length === 0 && <tr><td colSpan="6" className="p-20 text-center text-neutral-600 font-bold uppercase tracking-widest">ממתינים לפתיחת העונה</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
+        )}
+
+        {/* SCHEDULE */}
+        {activeTab === 'schedule' && (
+           <div className="animate-in space-y-8">
+             <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                <h2 className="text-4xl font-stencil text-[var(--street-orange)] tracking-widest uppercase">לוח המשחקים</h2>
+                {leagueStage === 'regular' && <div className="text-xs font-bold text-neutral-500">מחזור השלמות: {makeupDates}</div>}
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {matches.filter(m=>m.type==='regular').sort((a,b)=>a.roundIndex-b.roundIndex).map(m => (
+                  <div key={m.id} className={`street-card p-6 ${m.isPlayed ? 'opacity-40 border-neutral-800' : 'border-[var(--street-orange)]'}`}>
+                    <div className="text-[10px] font-black text-neutral-600 mb-2 uppercase">{m.roundName} | {m.roundDates}</div>
+                    <div className="flex justify-between items-center text-center font-bold">
+                      <div className="flex-1 text-white uppercase text-xl">{m.homeTeam.name}</div>
+                      <div className="px-4">
+                        {m.isPlayed ? <div className="text-3xl font-black text-[var(--street-orange)]">{m.homeScore}-{m.awayScore}</div> : <span className="font-stencil text-2xl text-neutral-800">VS</span>}
+                      </div>
+                      <div className="flex-1 text-white uppercase text-xl">{m.awayTeam.name}</div>
+                    </div>
+                    {!m.isPlayed && (
+                      <div className="mt-6 pt-4 border-t border-neutral-800 flex justify-center items-center gap-4">
+                        <input type="number" id={`h_${m.id}`} className="w-16 h-10 bg-black border-b-2 border-neutral-800 text-center text-2xl font-black text-white" placeholder="0" />
+                        <button onClick={() => updateScore(m.id, document.getElementById(`h_${m.id}`).value, document.getElementById(`a_${m.id}`).value)} className="bg-[var(--street-orange)] text-black font-black px-6 py-2 uppercase text-xs hover:bg-white transition-all">עדכן תוצאה</button>
+                        <input type="number" id={`a_${m.id}`} className="w-16 h-10 bg-black border-b-2 border-neutral-800 text-center text-2xl font-black text-white" placeholder="0" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {matches.filter(m=>m.type==='regular').length === 0 && <div className="col-span-full py-20 text-center text-neutral-600 font-stencil text-2xl uppercase border-2 border-dashed border-neutral-900 rounded-xl">לוח המשחקים ייווצר לאחר הזנקת הליגה על ידי המנהל</div>}
+             </div>
+           </div>
         )}
 
         {/* HALL OF FAME */}
@@ -472,12 +566,25 @@ export default function App() {
                <div className="tape-label tracking-[10px]">האגדות</div>
                <h2 className="font-stencil text-7xl md:text-8xl text-white uppercase tracking-tighter mt-2">היכל התהילה</h2>
             </div>
+
+            {isAdminMode && (
+              <div className="street-card p-6 border-[var(--street-yellow)] max-w-2xl mx-auto">
+                <h4 className="text-lg font-bold text-white mb-4 uppercase">ניהול ידני - היכל התהילה</h4>
+                <form onSubmit={addManualHof} className="flex flex-col md:flex-row gap-4">
+                  <input required type="text" placeholder="שנה" value={newHofYear} onChange={e=>setNewHofYear(e.target.value)} className="w-20 bg-black border p-2 text-white" />
+                  <input required type="text" placeholder="שם הקבוצה" value={manualHofTeam} onChange={e=>setManualHofTeam(e.target.value)} className="flex-1 bg-black border p-2 text-white" />
+                  <input type="text" placeholder="שמות שחקנים" value={manualHofPlayers} onChange={e=>setManualHofPlayers(e.target.value)} className="flex-1 bg-black border p-2 text-white" />
+                  <button type="submit" className="bg-[var(--street-yellow)] text-black font-black px-4 py-2 uppercase hover:bg-white transition-all">הוסף</button>
+                </form>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
               {hallOfFame.map((w) => (
                 <div key={w.id} className="gold-card p-12 text-center group relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-2 opacity-5"><Icon name="crown" size={100} color="#ffb300" /></div>
                   {isAdminMode && (
-                    <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', w.id))} className="absolute top-4 left-4 bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white p-2 rounded transition-all z-20"><Icon name="x" size={16} color="#ef4444" /></button>
+                    <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', w.id))} className="absolute top-4 left-4 bg-red-900/20 text-red-500 hover:bg-red-600 hover:text-white p-2 rounded transition-all z-20"><Icon name="x" size={16} color="#ef4444" /></button>
                   )}
                   <div className="font-stencil text-6xl text-[var(--street-yellow)] mb-4">{w.year}</div>
                   <h3 className="font-stencil text-7xl text-white uppercase mb-6 transition-transform group-hover:scale-105">{w.teamName}</h3>
@@ -487,103 +594,6 @@ export default function App() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* LEAGUE RULES */}
-        {activeTab === 'leagueRules' && (
-          <div className="animate-in max-w-4xl mx-auto pb-10">
-            <div className="tape-label">תקנון הליגה</div>
-            <h2 className="font-stencil text-7xl text-white mb-10 uppercase">REGAVIM 3X3</h2>
-            
-            <div className="rule-strip">
-              <h3 className="text-2xl font-black text-[var(--street-orange)] mb-2 uppercase">01. הקדמה</h3>
-              <p className="text-white font-bold leading-relaxed">ברוכים הבאים לליגת הסטריטבול של רגבים 3 על 3. הליגה הוקמה במטרה לקדם את תרבות הכדורסל הקהילתית והתחרותית במגרש הביתי שלנו. אנו מצפים למשחק הוגן, ספורטיבי ומכבד בין כל המשתתפים.</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="rule-strip">
-                <h3 className="text-xl font-black text-white mb-2 uppercase">02. סגל ורישום</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
-                  <li>• עד 4 שחקנים בקבוצה (3 על המגרש + מחליף).</li>
-                  <li>• גילאי 16 ומעלה בלבד.</li>
-                  <li>• יש להזין שמות מלאים ומדויקים בעת הרישום.</li>
-                </ul>
-              </div>
-              <div className="rule-strip">
-                <h3 className="text-xl font-black text-white mb-2 uppercase">03. מהלך המשחק</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
-                  <li>• משך כל משחק: 20 דקות זמן רץ.</li>
-                  <li>• במקרה של שוויון: תוספת של 4 דקות להכרעה.</li>
-                  <li>• המנצח מוציא כדור (Make it Take it).</li>
-                </ul>
-              </div>
-              <div className="rule-strip">
-                <h3 className="text-xl font-black text-white mb-2 uppercase">04. שיטת הניקוד</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
-                  <li>• קליעה מחוץ לקשת = 3 נקודות.</li>
-                  <li>• קליעה בתוך הקשת = 2 נקודות.</li>
-                  <li>• אין זריקות עונשין במהלך המשחקים.</li>
-                </ul>
-              </div>
-              <div className="rule-strip">
-                <h3 className="text-xl font-black text-white mb-2 uppercase">05. דירוג וטבלה</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
-                  <li>• ניצחון = 2 נקודות | הפסד = 1 נקודה.</li>
-                  <li>• שוויון בטבלה יוכרע על פי הפרש סלים.</li>
-                  <li>• 4 הקבוצות הראשונות עולות לאירוע הפיינל פור.</li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="mt-8 bg-[var(--street-orange)] p-8 text-center shadow-[10px_10px_0px_#000]">
-              <h4 className="text-black font-black uppercase text-xl mb-1">חובת דיווח תוצאה</h4>
-              <p className="text-black/80 text-sm font-black uppercase">מיד לאחר המשחק, קפטני הקבוצות מחויבים להזין את התוצאה באפליקציה.</p>
-            </div>
-          </div>
-        )}
-
-        {/* REGISTRATION */}
-        {activeTab === 'registration' && (
-          <div className="animate-in max-w-2xl mx-auto">
-            <div className="text-center mb-8">
-              <div className="tape-label">גיוס קבוצות</div>
-              <h2 className="font-stencil text-7xl text-white uppercase mt-2">רישום לליגה</h2>
-            </div>
-            {leagueStage === 'registration' ? (
-              <div className="street-card p-10 shadow-[15px_15px_0px_rgba(0,0,0,0.5)]">
-                <form onSubmit={handleRegisterTeam} className="space-y-8 text-right">
-                  <div>
-                    <label className="block text-neutral-400 font-black text-xs uppercase mb-3">שם הקבוצה</label>
-                    <input required type="text" value={regTeamName} onChange={e=>setRegTeamName(e.target.value)} placeholder="הכנס שם לקבוצה..." className="w-full bg-black border-2 border-neutral-900 p-5 text-white font-black text-xl focus:border-[var(--street-orange)] outline-none" />
-                  </div>
-                  <div className="space-y-4">
-                    <label className="block text-neutral-400 font-black text-xs uppercase">סגל שחקנים ומידות</label>
-                    {['קפטן', 'שחקן 2', 'שחקן 3', 'מחליף'].map((label, i) => (
-                      <div key={i} className="flex gap-3">
-                        <input 
-                          required={i < 3} type="text" value={regPlayers[i].name} placeholder={label} 
-                          onChange={e=>{const up=[...regPlayers];up[i].name=e.target.value;setRegPlayers(up);}} 
-                          className="flex-1 bg-black border-b-2 border-neutral-900 p-4 text-white font-bold outline-none focus:border-[var(--street-orange)]" 
-                        />
-                        <select value={regPlayers[i].size} onChange={e=>{const up=[...regPlayers];up[i].size=e.target.value;setRegPlayers(up);}} className="bg-neutral-900 border border-neutral-800 p-3 text-white font-black outline-none">
-                          {['S', 'M', 'L', 'XL', 'XXL'].map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                  <button disabled={isSubmitting} type="submit" className="w-full bg-white text-black font-black py-6 uppercase hover:bg-[var(--street-orange)] hover:text-white transition-all text-2xl shadow-[10px_10px_0px_#000]">
-                    {isSubmitting ? 'מעבד...' : 'שלח בקשת הרשמה'}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="street-card p-20 text-center border-dashed opacity-40">
-                <Icon name="lock" size={80} color="#555" />
-                <h4 className="text-4xl font-stencil text-white mb-2 uppercase">ההרשמה נסגרה</h4>
-                <p className="text-neutral-500 font-bold text-sm">העונה כבר התחילה. ניפגש בעונה הבאה!</p>
-              </div>
-            )}
           </div>
         )}
 
@@ -646,7 +656,7 @@ export default function App() {
                           <span className="text-[var(--street-orange)] font-stencil text-3xl opacity-30">#{i+1}</span> 
                           <span className="text-white tracking-tight">{p.name}</span>
                         </div>
-                        {isAdminMode && <span className="size-badge tracking-widest">{p.size}</span>}
+                        {isAdminMode && <span className="px-2 py-1 bg-white/10 text-[var(--street-yellow)] text-[10px] rounded">{p.size}</span>}
                       </div>
                     ))}
                   </div>
@@ -656,19 +666,154 @@ export default function App() {
           </div>
         )}
 
+        {/* REGISTRATION */}
+        {activeTab === 'registration' && (
+          <div className="animate-in max-w-2xl mx-auto space-y-8">
+            <div className="text-center">
+              <div className="tape-label">גיוס קבוצות</div>
+              <h2 className="font-stencil text-7xl text-white uppercase mt-2">רישום לליגה</h2>
+            </div>
+            {leagueStage === 'registration' ? (
+              <div className="street-card p-10 shadow-[15px_15px_0px_rgba(0,0,0,0.5)]">
+                <form onSubmit={handleRegisterTeam} className="space-y-8 text-right">
+                  <div>
+                    <label className="block text-neutral-400 font-black text-xs uppercase mb-3">שם הקבוצה</label>
+                    <input required type="text" value={regTeamName} onChange={e=>setRegTeamName(e.target.value)} placeholder="הכנס שם לקבוצה..." className="w-full bg-black border-2 border-neutral-900 p-5 text-white font-black text-xl focus:border-[var(--street-orange)] outline-none" />
+                  </div>
+                  <div className="space-y-4">
+                    <label className="block text-neutral-400 font-black text-xs uppercase">סגל שחקנים ומידות</label>
+                    {['קפטן', 'שחקן 2', 'שחקן 3', 'מחליף'].map((label, i) => (
+                      <div key={i} className="flex gap-3">
+                        <input 
+                          required={i < 3} type="text" value={regPlayers[i].name} placeholder={label} 
+                          onChange={e=>{const up=[...regPlayers];up[i].name=e.target.value;setRegPlayers(up);}} 
+                          className="flex-1 bg-black border-b-2 border-neutral-900 p-4 text-white font-bold outline-none focus:border-[var(--street-orange)]" 
+                        />
+                        <select value={regPlayers[i].size} onChange={e=>{const up=[...regPlayers];up[i].size=e.target.value;setRegPlayers(up);}} className="bg-neutral-900 border border-neutral-800 p-3 text-white font-black outline-none">
+                          {['S', 'M', 'L', 'XL', 'XXL'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  <button disabled={isSubmitting} type="submit" className="w-full bg-white text-black font-black py-6 uppercase hover:bg-[var(--street-orange)] hover:text-white transition-all text-2xl shadow-[10px_10px_0px_#000]">
+                    {isSubmitting ? 'מעבד...' : 'שלח בקשת הרשמה'}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="street-card p-20 text-center border-dashed opacity-40">
+                <Icon name="lock" size={80} color="#555" />
+                <h4 className="text-4xl font-stencil text-white mb-2 uppercase tracking-widest">ההרשמה נסגרה</h4>
+                <p className="text-neutral-500 font-bold text-sm">העונה כבר התחילה. ניפגש בעונה הבאה!</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PLAYOFFS */}
+        {activeTab === 'playoffs' && (
+           <div className="animate-in space-y-12">
+             <div className="flex flex-col md:flex-row justify-between md:items-center border-b border-neutral-800 pb-4 gap-4">
+               <h2 className="text-4xl font-stencil text-[var(--street-yellow)] tracking-widest uppercase">שלב הפיינל פור</h2>
+               <div className="flex gap-2">
+                 {isAdminMode && leagueStage === 'regular' && <button onClick={startFinalFour} className="bg-white text-black px-5 py-2 font-black text-xs uppercase hover:bg-[var(--street-orange)] transition-colors">הפעל פיינל פור</button>}
+                 {isAdminMode && leagueStage === 'playoff' && matches.filter(m=>m.type==='playoff'&&m.stage==='semi'&&m.isPlayed).length===2 && !matches.find(m=>m.stage==='final') && <button onClick={createFinals} className="bg-[var(--street-yellow)] text-black px-5 py-2 font-black text-xs uppercase">צור משחקי הכרעה</button>}
+               </div>
+             </div>
+
+             {finalMatch?.isPlayed && isAdminMode && (
+               <div className="street-card p-8 text-center border-[var(--street-yellow)] border-2 animate-fade-in">
+                  <Icon name="crown" size={60} className="text-[var(--street-yellow)] mx-auto mb-4" />
+                  <h3 className="text-3xl font-stencil text-white mb-6 tracking-widest uppercase">יש אלופה! הכתר והעלה להיכל</h3>
+                  <div className="flex flex-col md:flex-row justify-center items-center gap-4">
+                    <input type="text" value={newHofYear} onChange={e=>setNewHofYear(e.target.value)} className="bg-black border border-neutral-700 p-2 text-white w-24 text-center font-bold" />
+                    <button onClick={promoteToHof} className="bg-[var(--street-yellow)] text-black font-black px-10 py-3 uppercase hover:bg-white transition-all shadow-xl">הכתרה רשמית</button>
+                  </div>
+               </div>
+             )}
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {matches.filter(m=>m.type==='playoff').sort((a,b)=>a.roundIndex-b.roundIndex).map(m => (
+                  <div key={m.id} className={`street-card p-10 ${m.stage === 'final' ? 'border-[var(--street-yellow)] border-2 shadow-[0_0_40px_rgba(255,179,0,0.15)]' : 'border-neutral-800'}`}>
+                    <div className="text-[10px] font-black text-neutral-600 mb-4 uppercase text-center">{m.roundName}</div>
+                    <div className="flex justify-between items-center text-center">
+                      <div className="flex-1 font-black text-2xl text-white uppercase">{m.homeTeam.name}</div>
+                      <div className="px-6">
+                        {m.isPlayed ? <div className="text-5xl font-black text-[var(--street-yellow)]">{m.homeScore}-{m.awayScore}</div> : <span className="font-stencil text-4xl text-neutral-800">VS</span>}
+                      </div>
+                      <div className="flex-1 font-black text-2xl text-white uppercase">{m.awayTeam.name}</div>
+                    </div>
+                  </div>
+                ))}
+             </div>
+           </div>
+        )}
+
+        {/* LEAGUE RULES */}
+        {activeTab === 'leagueRules' && (
+          <div className="animate-in max-w-4xl mx-auto pb-10">
+            <div className="tape-label">תקנון הליגה</div>
+            <h2 className="font-stencil text-7xl text-white mb-10 uppercase">REGAVIM 3X3</h2>
+            
+            <div className="rule-strip">
+              <h3 className="text-2xl font-black text-[var(--street-orange)] mb-2 uppercase">01. הקדמה</h3>
+              <p className="text-white font-bold leading-relaxed text-lg">ברוכים הבאים לליגת הסטריטבול של רגבים 3 על 3. הליגה הוקמה במטרה לקדם את תרבות הכדורסל הקהילתית והתחרותית במגרש הביתי שלנו. אנו מצפים למשחק הוגן, ספורטיבי ומכבד בין כל המשתתפים.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="rule-strip">
+                <h3 className="text-xl font-black text-white mb-2 uppercase">02. סגל ורישום</h3>
+                <ul className="text-white text-sm space-y-3 font-bold">
+                  <li>• עד 4 שחקנים בקבוצה (3 על המגרש + מחליף).</li>
+                  <li>• גילאי 16 ומעלה בלבד.</li>
+                  <li>• יש להזין שמות מלאים ומדויקים בעת הרישום.</li>
+                </ul>
+              </div>
+              <div className="rule-strip">
+                <h3 className="text-xl font-black text-white mb-2 uppercase">03. מהלך המשחק</h3>
+                <ul className="text-white text-sm space-y-3 font-bold">
+                  <li>• משך כל משחק: 20 דקות זמן רץ.</li>
+                  <li>• במקרה של שוויון: תוספת של 4 דקות להכרעה.</li>
+                  <li>• המנצח מוציא כדור (Make it Take it).</li>
+                </ul>
+              </div>
+              <div className="rule-strip">
+                <h3 className="text-xl font-black text-white mb-2 uppercase">04. שיטת הניקוד</h3>
+                <ul className="text-white text-sm space-y-3 font-bold">
+                  <li>• קליעה מחוץ לקשת = 3 נקודות.</li>
+                  <li>• קליעה בתוך הקשת = 2 נקודות.</li>
+                  <li>• אין זריקות עונשין במהלך המשחקים.</li>
+                </ul>
+              </div>
+              <div className="rule-strip">
+                <h3 className="text-xl font-black text-white mb-2 uppercase">05. דירוג וטבלה</h3>
+                <ul className="text-white text-sm space-y-3 font-bold">
+                  <li>• ניצחון = 2 נקודות | הפסד = 1 נקודה.</li>
+                  <li>• שוויון בטבלה יוכרע על פי הפרש סלים.</li>
+                  <li>• 4 הקבוצות הראשונות עולות לאירוע הפיינל פור.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-8 bg-[var(--street-orange)] p-8 text-center shadow-[10px_10px_0px_#000]">
+              <h4 className="text-black font-black uppercase text-xl mb-1">חובת דיווח תוצאה</h4>
+              <p className="text-black/80 text-sm font-black uppercase">מיד לאחר המשחק, קפטני הקבוצות מחויבים להזין את התוצאה באפליקציה.</p>
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* ADMIN MODAL */}
+      {/* LOGIN MODAL */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-4 animate-in">
           <div className="bg-[#0a0a0a] border-8 border-white p-12 max-w-sm w-full shadow-[25px_25px_0px_var(--street-orange)] relative">
              <button onClick={()=>setShowLoginModal(false)} className="absolute top-6 left-6 text-neutral-600 hover:text-white"><Icon name="x" size={24} color="#666" /></button>
-            <h3 className="font-stencil text-6xl text-white mb-10 text-center">LOGIN</h3>
-            <div className="space-y-6 mb-10">
+            <h3 className="font-stencil text-6xl text-white mb-10 text-center uppercase">כניסת הנהלה</h3>
+            <div className="space-y-6 mb-10 text-right">
               <input type="text" placeholder="שם משתמש" value={adminUser} onChange={e=>setAdminUser(e.target.value)} className="w-full bg-black border-2 border-neutral-800 p-5 text-white font-black" />
               <input type="password" placeholder="קוד גישה" value={adminPass} onChange={e=>setAdminPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} className="w-full bg-black border-2 border-neutral-800 p-5 text-white font-black" dir="ltr" />
             </div>
-            <button onClick={handleLogin} className="w-full bg-white text-black font-black py-6 uppercase hover:bg-[var(--street-orange)] hover:text-white transition-all text-xl font-stencil">ACCESS GRANTED</button>
+            <button onClick={handleLogin} className="w-full bg-white text-black font-black py-6 uppercase hover:bg-[var(--street-orange)] hover:text-white transition-all text-xl font-stencil">התחבר</button>
           </div>
         </div>
       )}
@@ -677,6 +822,14 @@ export default function App() {
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] bg-[var(--street-orange)] text-black font-black px-12 py-6 shadow-2xl animate-bounce flex items-center gap-5 text-xl border-8 border-black">
           <Icon name="check" size={30} color="#000000" />
           <span>{notification}</span>
+        </div>
+      )}
+      
+      {isAdminMode && (
+        <div className="fixed bottom-4 left-4 z-50 flex gap-2">
+           <button onClick={resetSeasonOnly} className="bg-red-900/40 hover:bg-red-600 text-red-500 hover:text-white p-2 border border-red-900 transition-all text-[10px] font-black px-4 flex items-center gap-2 rounded uppercase tracking-widest shadow-xl">
+            <Icon name="history" size={14} /> RESET SEASON
+          </button>
         </div>
       )}
     </div>
