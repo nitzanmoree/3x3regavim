@@ -25,7 +25,7 @@ const Icon = ({ name, size = 24, className = '' }) => {
     clipboard: 'clipboard-list',
     lock: 'lock',
     award: 'award',
-    plus: 'plus'
+    shirt: 'shirt'
   };
   return (
     <img 
@@ -141,6 +141,15 @@ body {
   margin-bottom: 1.5rem;
 }
 
+.size-badge {
+  background: rgba(255,255,255,0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--street-yellow);
+  border: 1px solid rgba(255,179,0,0.3);
+}
+
 .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 `;
@@ -164,10 +173,16 @@ export default function App() {
   const [leagueStartDate, setLeagueStartDate] = useState('');
   const [makeupDates, setMakeupDates] = useState('');
   
-  // Form States
+  // Form States (Registration with Sizes)
   const [regTeamName, setRegTeamName] = useState('');
-  const [regPlayers, setRegPlayers] = useState(['', '', '', '']);
+  const [regPlayers, setRegPlayers] = useState([
+    { name: '', size: 'M' },
+    { name: '', size: 'M' },
+    { name: '', size: 'M' },
+    { name: '', size: 'M' }
+  ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const [newHofYear, setNewHofYear] = useState(new Date().getFullYear().toString());
   const [manualHofTeam, setManualHofTeam] = useState('');
   const [manualHofPlayers, setManualHofPlayers] = useState('');
@@ -185,20 +200,20 @@ export default function App() {
 
     const unsubTeams = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'teams'), (s) => {
       setTeams(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => console.error(err));
+    });
 
     const unsubMatches = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), (s) => {
       setMatches(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => console.error(err));
+    });
 
     const unsubHof = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hallOfFame'), (s) => {
       const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
       setHallOfFame(data.sort((a, b) => b.year - a.year));
-    }, (err) => console.error(err));
+    });
 
     const unsubPending = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'registrationRequests'), (s) => {
       setPendingRegistrations(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => console.error(err));
+    });
 
     const unsubMeta = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), (ds) => {
       if (ds.exists()) {
@@ -210,7 +225,7 @@ export default function App() {
       } else {
         seedDatabase();
       }
-    }, (err) => console.error(err));
+    });
 
     return () => { unsubTeams(); unsubMatches(); unsubHof(); unsubMeta(); unsubPending(); };
   }, [user]);
@@ -218,31 +233,31 @@ export default function App() {
   // --- LOGIC: STANDINGS ---
   const standings = useMemo(() => {
     const stats = {};
-    teams.forEach(t => stats[t.id] = { id: t.id, name: t.name, players: t.players, points: 0, wins: 0, losses: 0, pf: 0, pa: 0, diff: 0 });
+    teams.forEach(t => stats[t.id] = { id: t.id, name: t.name, points: 0, wins: 0, losses: 0, pf: 0, pa: 0, diff: 0 });
     
     matches.filter(m => m.isPlayed && m.type === 'regular').forEach(m => {
       const hId = m.homeTeam.id, aId = m.awayTeam.id;
       if (!stats[hId] || !stats[aId]) return;
-      
       const hS = parseInt(m.homeScore) || 0;
       const aS = parseInt(m.awayScore) || 0;
-
       stats[hId].pf += hS; stats[hId].pa += aS;
       stats[aId].pf += aS; stats[aId].pa += hS;
-
-      if (hS > aS) { 
-        stats[hId].wins += 1; stats[hId].points += 2; 
-        stats[aId].losses += 1; stats[aId].points += 1; 
-      } else { 
-        stats[aId].wins += 1; stats[aId].points += 2; 
-        stats[hId].losses += 1; stats[hId].points += 1; 
-      }
+      if (hS > aS) { stats[hId].wins += 1; stats[hId].points += 2; stats[aId].losses += 1; stats[aId].points += 1; }
+      else { stats[aId].wins += 1; stats[aId].points += 2; stats[hId].losses += 1; stats[hId].points += 1; }
     });
-
-    return Object.values(stats)
-      .map(s => ({ ...s, diff: s.pf - s.pa }))
-      .sort((a, b) => b.points - a.points || b.diff - a.diff);
+    return Object.values(stats).map(s => ({ ...s, diff: s.pf - s.pa })).sort((a, b) => b.points - a.points || b.diff - a.diff);
   }, [teams, matches]);
+
+  // --- SHIRT SUMMARY FOR ADMIN ---
+  const shirtSummary = useMemo(() => {
+    const summary = { 'S': 0, 'M': 0, 'L': 0, 'XL': 0, 'XXL': 0 };
+    teams.forEach(t => {
+      t.players?.forEach(p => {
+        if (p.size && summary[p.size] !== undefined) summary[p.size]++;
+      });
+    });
+    return summary;
+  }, [teams]);
 
   // --- ACTIONS ---
   const showMessage = (msg) => { setNotification(msg); setTimeout(() => setNotification(null), 3000); };
@@ -264,18 +279,19 @@ export default function App() {
   const handleRegisterTeam = async (e) => {
     e.preventDefault();
     if (leagueStage !== 'registration') return showMessage('הרישום לעונה זו סגור');
-    const players = regPlayers.filter(p => p.trim());
-    if (players.length < 3) return showMessage('מינימום 3 שחקנים לקבוצה');
+    const validPlayers = regPlayers.filter(p => p.name.trim() !== '');
+    if (validPlayers.length < 3) return showMessage('מינימום 3 שחקנים לקבוצה');
 
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'registrationRequests'), {
         name: regTeamName,
-        players: players,
+        players: validPlayers,
         createdAt: Date.now()
       });
       showMessage('בקשת רישום נשלחה לאישור מנהל');
-      setRegTeamName(''); setRegPlayers(['', '', '', '']);
+      setRegTeamName(''); 
+      setRegPlayers([{ name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }]);
       setActiveTab('standings');
     } catch (err) { showMessage('שגיאה בשליחת הבקשה'); }
     setIsSubmitting(false);
@@ -294,6 +310,13 @@ export default function App() {
     if (window.confirm('למחוק את בקשת הרישום?')) {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registrationRequests', id));
       showMessage('הבקשה הוסרה');
+    }
+  };
+
+  const deleteTeam = async (id) => {
+    if (window.confirm('האם למחוק את הקבוצה מהליגה?')) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teams', id));
+      showMessage('קבוצה נמחקה');
     }
   };
 
@@ -335,7 +358,7 @@ export default function App() {
     if (!fm || !fm.isPlayed) return;
     const winner = fm.homeScore > fm.awayScore ? fm.homeTeam : fm.awayTeam;
     const winnerData = teams.find(t => t.id === winner.id) || winner;
-    const playersStr = Array.isArray(winnerData.players) ? winnerData.players.join(', ') : '';
+    const playersStr = Array.isArray(winnerData.players) ? winnerData.players.map(p => p.name).join(', ') : '';
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', 'h_' + Date.now()), { year: newHofYear, teamName: winnerData.name, players: playersStr });
     showMessage(`${winnerData.name} נכנסה להיכל התהילה!`);
     setActiveTab('hallOfFame');
@@ -450,9 +473,9 @@ export default function App() {
           </div>
         )}
 
-        {/* REGISTRATION */}
+        {/* REGISTRATION WITH SIZES */}
         {activeTab === 'registration' && (
-          <div className="animate-fade-in max-w-xl mx-auto space-y-8">
+          <div className="animate-fade-in max-w-2xl mx-auto space-y-8">
             <div className="text-center">
               <h2 className="text-5xl font-stencil text-white tracking-widest mb-2 uppercase">הרשמה לעונה</h2>
               <p className="text-neutral-500 font-bold uppercase tracking-wider">{leagueStage === 'registration' ? "הצטרפו לזירה עכשיו" : "ההרשמה סגורה כרגע"}</p>
@@ -465,9 +488,25 @@ export default function App() {
                     <input required type="text" value={regTeamName} onChange={e=>setRegTeamName(e.target.value)} className="w-full bg-[#0a0a0a] border border-neutral-800 p-4 text-white font-bold focus:border-[var(--street-orange)] outline-none" />
                   </div>
                   <div className="space-y-4">
-                    <label className="block text-white font-black text-xs uppercase">סגל שחקנים (שם מלא)</label>
+                    <label className="block text-white font-black text-xs uppercase">סגל שחקנים (שם מלא + מידת חולצה)</label>
                     {['קפטן', 'שחקן 2', 'שחקן 3', 'מחליף'].map((label, i) => (
-                      <input key={i} required={i < 3} type="text" value={regPlayers[i]} placeholder={label} onChange={e=>{const up=[...regPlayers];up[i]=e.target.value;setRegPlayers(up);}} className="w-full bg-[#0a0a0a] border-b border-neutral-800 p-3 text-white font-bold outline-none focus:border-[var(--street-orange)]" />
+                      <div key={i} className="flex gap-2">
+                        <input 
+                          required={i < 3} 
+                          type="text" 
+                          value={regPlayers[i].name} 
+                          placeholder={label} 
+                          onChange={e=>{const up=[...regPlayers];up[i].name=e.target.value;setRegPlayers(up);}} 
+                          className="flex-1 bg-[#0a0a0a] border-b border-neutral-800 p-3 text-white font-bold outline-none focus:border-[var(--street-orange)]" 
+                        />
+                        <select 
+                          value={regPlayers[i].size}
+                          onChange={e=>{const up=[...regPlayers];up[i].size=e.target.value;setRegPlayers(up);}}
+                          className="bg-[#1a1a1a] border border-neutral-800 text-neutral-400 p-2 text-sm outline-none focus:text-white"
+                        >
+                          {['S', 'M', 'L', 'XL', 'XXL'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
                     ))}
                   </div>
                   <button disabled={isSubmitting} type="submit" className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-all tracking-widest text-xl">{isSubmitting ? 'שולח...' : 'הירשם לליגה'}</button>
@@ -480,61 +519,6 @@ export default function App() {
                 <p className="text-neutral-500">העונה כבר בעיצומה. נתראה במחזור הבא!</p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* LEAGUE RULES */}
-        {activeTab === 'leagueRules' && (
-          <div className="animate-fade-in max-w-3xl mx-auto space-y-6">
-            <div className="text-center mb-10">
-               <h2 className="text-5xl font-stencil text-white tracking-widest uppercase">תקנון הליגה</h2>
-               <div className="bg-[var(--street-orange)] h-1 w-20 mx-auto mt-4"></div>
-            </div>
-            
-            <div className="rule-block">
-              <h3 className="text-xl font-bold text-[var(--street-orange)] mb-2">הקדמה - רגבים 3 על 3</h3>
-              <p className="text-neutral-400 text-sm leading-relaxed">ליגת סטריטבול רגבים הוקמה כדי לייצר זירה תחרותית וקהילתית עבור חובבי הכדורסל. אנו שומרים על רוח המשחק והגינות ספורטיבית מעל הכל.</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rule-block">
-                <h4 className="text-white font-bold mb-2">סגל ורישום</h4>
-                <ul className="text-neutral-400 text-xs space-y-2">
-                  <li>• עד 4 שחקנים בקבוצה (3+1).</li>
-                  <li>• גילאי 16 ומעלה בלבד.</li>
-                  <li>• יש לרשום שם פרטי ושם משפחה מדויק.</li>
-                </ul>
-              </div>
-              <div className="rule-block">
-                <h4 className="text-white font-bold mb-2">חוקי המשחק</h4>
-                <ul className="text-neutral-400 text-xs space-y-2">
-                  <li>• משך משחק: 20 דקות (זמן רץ).</li>
-                  <li>• שוויון: תוספת הארכה של 4 דקות.</li>
-                  <li>• קבוצה שקלעה מוציאה כדור (Make it Take it).</li>
-                </ul>
-              </div>
-              <div className="rule-block">
-                <h4 className="text-white font-bold mb-2">שיטת הניקוד</h4>
-                <ul className="text-neutral-400 text-xs space-y-2">
-                  <li>• קליעה מחוץ לקשת = 3 נקודות.</li>
-                  <li>• קליעה בתוך הקשת = 2 נקודות.</li>
-                  <li>• אין זריקות עונשין.</li>
-                </ul>
-              </div>
-              <div className="rule-block">
-                <h4 className="text-white font-bold mb-2">דירוג וטבלה</h4>
-                <ul className="text-neutral-400 text-xs space-y-2">
-                  <li>• ניצחון = 2 נק', הפסד = 1 נק'.</li>
-                  <li>• הפרש סלים קובע שוויון נקודות.</li>
-                  <li>• 4 הראשונות עולות לפיינל פור.</li>
-                </ul>
-              </div>
-            </div>
-            
-            <div className="rule-block border-none bg-orange-600/10 rounded-lg">
-               <h4 className="text-[var(--street-orange)] font-bold mb-2">חובת דיווח</h4>
-               <p className="text-neutral-300 text-xs">לאחר כל משחק, קפטני הקבוצות מחויבים לעדכן את התוצאה באפליקציה באופן מיידי.</p>
-            </div>
           </div>
         )}
 
@@ -564,21 +548,13 @@ export default function App() {
               {hallOfFame.map((w) => (
                 <div key={w.id} className="gold-card p-10 text-center relative group overflow-hidden animate-fade-in">
                   {isAdminMode && (
-                    <button 
-                      onClick={() => deleteHof(w.id)} 
-                      className="absolute top-4 left-4 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white w-8 h-8 rounded flex items-center justify-center transition-all z-20 border border-red-600/50"
-                    >
-                      <Icon name="x" size={16}/>
-                    </button>
+                    <button onClick={() => deleteHof(w.id)} className="absolute top-4 left-4 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white w-8 h-8 rounded flex items-center justify-center transition-all z-20 border border-red-600/50"><Icon name="x" size={16}/></button>
                   )}
                   <div className="text-[var(--street-yellow)] font-stencil text-4xl mb-4 tracking-widest">{w.year}</div>
                   <h3 className="text-5xl font-stencil text-white uppercase tracking-widest mb-6 group-hover:scale-110 transition-transform">{w.teamName}</h3>
-                  <div className="bg-black/50 py-3 px-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">
-                    {w.players}
-                  </div>
+                  <div className="bg-black/50 py-3 px-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">{w.players}</div>
                 </div>
               ))}
-              {hallOfFame.length === 0 && <div className="col-span-full py-20 text-center text-neutral-700 font-stencil text-2xl uppercase border-2 border-dashed border-neutral-900 rounded-xl">ההיסטוריה טרם נכתבה</div>}
             </div>
           </div>
         )}
@@ -586,27 +562,53 @@ export default function App() {
         {/* TEAMS */}
         {activeTab === 'teams' && (
           <div className="animate-fade-in space-y-10">
-            {isAdminMode && pendingRegistrations.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-2xl font-bold text-[var(--street-yellow)] uppercase tracking-widest flex items-center gap-3">
-                  <Icon name="alertCircle" size={24} /> בקשות רישום ({pendingRegistrations.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {pendingRegistrations.map(r => (
-                    <div key={r.id} className="street-card p-5 flex justify-between items-center bg-black border-[var(--street-yellow)]">
-                      <div>
-                        <h4 className="text-white font-bold text-lg">{r.name}</h4>
-                        <p className="text-neutral-500 text-xs font-bold">{r.players.join(', ')}</p>
+            {isAdminMode && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+                {/* Pending Requests */}
+                <div className="lg:col-span-2 space-y-4">
+                  <h3 className="text-2xl font-bold text-[var(--street-yellow)] uppercase tracking-widest flex items-center gap-3">
+                    <Icon name="alertCircle" size={24} /> בקשות רישום ({pendingRegistrations.length})
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {pendingRegistrations.map(r => (
+                      <div key={r.id} className="street-card p-5 flex justify-between items-center bg-black border-[var(--street-yellow)] relative">
+                        <div>
+                          <h4 className="text-white font-bold text-lg">{r.name}</h4>
+                          <div className="text-neutral-500 text-[10px] font-bold">
+                            {r.players.map((p,pi) => (
+                              <span key={pi} className="ml-2">{p.name} <span className="text-[var(--street-yellow)]">({p.size})</span>{pi < r.players.length-1 ? ',' : ''}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={()=>approveRegistration(r)} className="bg-green-600 p-2 rounded hover:bg-green-500 transition-colors"><Icon name="check" size={20} className="text-white"/></button>
+                          <button onClick={()=>rejectRegistration(r.id)} className="bg-red-600 p-2 rounded hover:bg-red-500 transition-colors"><Icon name="x" size={20} className="text-white"/></button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button onClick={()=>approveRegistration(r)} className="bg-green-600 p-2 rounded hover:bg-green-500 transition-colors"><Icon name="check" size={20} className="text-white"/></button>
-                        <button onClick={()=>rejectRegistration(r.id)} className="bg-red-600 p-2 rounded hover:bg-red-500 transition-colors"><Icon name="x" size={20} className="text-white"/></button>
+                    ))}
+                  </div>
+                </div>
+                {/* Shirt Summary */}
+                <div className="street-card p-6 border-[var(--street-orange)] bg-black/40 h-fit">
+                   <h3 className="text-xl font-bold text-white mb-4 uppercase flex items-center gap-2">
+                     <Icon name="shirt" size={18} className="text-[var(--street-orange)]" /> ריכוז חולצות
+                   </h3>
+                   <div className="space-y-3 font-bold text-sm">
+                      {Object.entries(shirtSummary).map(([size, count]) => (
+                        <div key={size} className="flex justify-between border-b border-neutral-800 pb-1">
+                          <span className="text-neutral-400">מידה {size}:</span>
+                          <span className="text-[var(--street-yellow)] text-lg">{count}</span>
+                        </div>
+                      ))}
+                      <div className="pt-2 flex justify-between text-white border-t border-neutral-700">
+                        <span>סה"כ חולצות:</span>
+                        <span className="text-[var(--street-orange)] text-xl">{Object.values(shirtSummary).reduce((a, b) => a + b, 0)}</span>
                       </div>
-                    </div>
-                  ))}
+                   </div>
                 </div>
               </div>
             )}
+            
             <div className="flex items-center gap-3 border-b border-neutral-800 pb-2 mb-6">
               <h3 className="text-3xl font-stencil text-white tracking-widest uppercase">קבוצות מאושרות</h3>
             </div>
@@ -618,7 +620,14 @@ export default function App() {
                     <h3 className="font-stencil text-4xl text-white uppercase tracking-tighter">{t.name}</h3>
                   </div>
                   <div className="p-6 bg-black/40 space-y-3 font-bold text-sm text-neutral-400">
-                    {t.players?.map((p, i) => <div key={i} className="flex gap-3 items-center opacity-80"><span className="text-[var(--street-orange)] font-stencil text-lg">#{i+1}</span> {p}</div>)}
+                    {t.players?.map((p, i) => (
+                      <div key={i} className="flex justify-between items-center opacity-80">
+                        <div className="flex gap-3 items-center">
+                          <span className="text-[var(--street-orange)] font-stencil text-lg">#{i+1}</span> {p.name}
+                        </div>
+                        {isAdminMode && <span className="size-badge">SIZE: {p.size}</span>}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -628,7 +637,7 @@ export default function App() {
 
         {/* SCHEDULE */}
         {activeTab === 'schedule' && (
-           <div className="animate-fade-in space-y-8 text-right">
+           <div className="animate-fade-in space-y-8">
              <h2 className="text-4xl font-stencil text-[var(--street-orange)] tracking-widest uppercase border-b border-neutral-800 pb-2">לוח המשחקים</h2>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {matches.filter(m=>m.type==='regular').sort((a,b)=>a.roundIndex-b.roundIndex).map(m => (
@@ -661,7 +670,7 @@ export default function App() {
              {finalMatch?.isPlayed && isAdminMode && (
                <div className="street-card p-8 text-center border-[var(--street-yellow)] border-2 animate-fade-in">
                   <Icon name="crown" size={60} className="text-[var(--street-yellow)] mx-auto mb-4" />
-                  <h3 className="text-3xl font-stencil text-white mb-6 tracking-widest">יש אלופה! הכתר והעלה להיכל</h3>
+                  <h3 className="text-3xl font-stencil text-white mb-6 tracking-widest uppercase">יש אלופה! הכתר והעלה להיכל</h3>
                   <div className="flex justify-center items-center gap-4">
                     <input type="text" value={newHofYear} onChange={e=>setNewHofYear(e.target.value)} className="bg-black border border-neutral-700 p-2 text-white w-24 text-center font-bold" />
                     <button onClick={promoteToHof} className="bg-[var(--street-yellow)] text-black font-black px-10 py-3 uppercase hover:bg-white transition-all shadow-xl">הכתרה רשמית</button>
@@ -682,15 +691,51 @@ export default function App() {
                     </div>
                     {!m.isPlayed && (
                       <div className="mt-8 pt-8 border-t border-neutral-800 flex justify-center items-center gap-4">
-                        <input type="number" id={`h_${m.id}`} className="w-20 h-14 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white outline-none focus:border-[var(--street-orange)]" placeholder="0" />
+                        <input type="number" id={`h_${m.id}`} className="w-20 h-14 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white outline-none" placeholder="0" />
                         <button onClick={() => updateScore(m.id, document.getElementById(`h_${m.id}`).value, document.getElementById(`a_${m.id}`).value)} className="bg-[var(--street-orange)] text-black font-black px-8 py-3 uppercase hover:bg-white transition-colors">עדכן</button>
-                        <input type="number" id={`a_${m.id}`} className="w-20 h-14 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white outline-none focus:border-[var(--street-orange)]" placeholder="0" />
+                        <input type="number" id={`a_${m.id}`} className="w-20 h-14 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white outline-none" placeholder="0" />
                       </div>
                     )}
                   </div>
                 ))}
              </div>
            </div>
+        )}
+
+        {/* LEAGUE RULES */}
+        {activeTab === 'leagueRules' && (
+          <div className="animate-fade-in max-w-3xl mx-auto space-y-6">
+            <div className="text-center mb-10">
+               <h2 className="text-5xl font-stencil text-white tracking-widest uppercase">תקנון הליגה</h2>
+               <div className="bg-[var(--street-orange)] h-1 w-20 mx-auto mt-4"></div>
+            </div>
+            <div className="rule-block">
+              <h3 className="text-xl font-bold text-[var(--street-orange)] mb-2 uppercase tracking-widest">הקדמה - רגבים 3 על 3</h3>
+              <p className="text-neutral-400 text-sm leading-relaxed">ליגת סטריטבול רגבים הוקמה כדי לייצר זירה תחרותית וקהילתית עבור חובבי הכדורסל. אנו שומרים על רוח המשחק והגינות ספורטיבית מעל הכל.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rule-block">
+                <h4 className="text-white font-bold mb-2">סגל ורישום</h4>
+                <ul className="text-neutral-400 text-xs space-y-2">
+                  <li>• עד 4 שחקנים בקבוצה (3+1).</li>
+                  <li>• גילאי 16 ומעלה בלבד.</li>
+                  <li>• יש לרשום שם פרטי ושם משפחה מדויק.</li>
+                </ul>
+              </div>
+              <div className="rule-block">
+                <h4 className="text-white font-bold mb-2">חוקי המשחק</h4>
+                <ul className="text-neutral-400 text-xs space-y-2">
+                  <li>• משך משחק: 20 דקות (זמן רץ).</li>
+                  <li>• שוויון: תוספת הארכה של 4 דקות.</li>
+                  <li>• קבוצה שקלעה מוציאה כדור (Make it Take it).</li>
+                </ul>
+              </div>
+            </div>
+            <div className="rule-block border-none bg-orange-600/10 rounded-lg">
+               <h4 className="text-[var(--street-orange)] font-bold mb-2">חובת דיווח</h4>
+               <p className="text-neutral-300 text-xs font-bold">לאחר כל משחק, קפטני הקבוצות מחויבים לעדכן את התוצאה באפליקציה באופן מיידי.</p>
+            </div>
+          </div>
         )}
       </main>
 
