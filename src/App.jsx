@@ -17,7 +17,10 @@ const Icon = ({ name, size = 24, className = '' }) => {
     medal: 'medal',
     crown: 'crown',
     star: 'star',
-    history: 'history'
+    history: 'history',
+    info: 'info',
+    clock: 'clock',
+    alertCircle: 'alert-circle'
   };
   return (
     <img 
@@ -69,6 +72,12 @@ body { background-color: var(--dark-asphalt); background-image: linear-gradient(
   background-size: 200% 200%; animation: shine 3s infinite; pointer-events: none;
 }
 @keyframes shine { 0% { background-position: -100% -100%; } 100% { background-position: 100% 100%; } }
+
+.rule-item {
+  border-right: 4px solid var(--street-orange);
+  padding-right: 1.5rem;
+  background: rgba(255,255,255,0.02);
+}
 `;
 
 export default function App() {
@@ -96,9 +105,7 @@ export default function App() {
 
   // --- BROWSER TITLE & AUTH ---
   useEffect(() => {
-    // עדכון כותרת הלשונית בדפדפן
     document.title = "StreetBall Regavim";
-    
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, setUser);
   }, []);
@@ -212,7 +219,6 @@ export default function App() {
     const finalMatch = matches.find(m => m.id === 'ff_final');
     if (!finalMatch || !finalMatch.isPlayed) return;
     const winner = finalMatch.homeScore > finalMatch.awayScore ? finalMatch.homeTeam : finalMatch.awayTeam;
-    
     const winnerData = teams.find(t => t.id === winner.id) || winner;
     const playersStr = Array.isArray(winnerData.players) ? winnerData.players.join(', ') : '';
 
@@ -232,12 +238,10 @@ export default function App() {
 
   const resetSeasonOnly = async () => {
     if(!window.confirm('אזהרה: פעולה זו תמחק את כל הקבוצות והמשחקים של העונה הנוכחית כדי להתחיל עונה חדשה. היכל התהילה יישאר ללא שינוי. להמשיך?')) return;
-    
     const batch = writeBatch(db);
     matches.forEach(m => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'matches', m.id)));
     teams.forEach(t => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'teams', t.id)));
     batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { leagueStage: 'registration', leagueStartDate: '', makeupDates: '' });
-    
     await batch.commit();
     showMessage('העונה אופסה בהצלחה. היכל התהילה נשמר!');
     setActiveTab('standings');
@@ -262,7 +266,8 @@ export default function App() {
           { id: 'schedule', l: 'לוח משחקים' },
           { id: 'playoffs', l: 'פיינל פור' },
           { id: 'teams', l: 'קבוצות' },
-          { id: 'hallOfFame', l: 'היכל התהילה' }
+          { id: 'hallOfFame', l: 'היכל התהילה' },
+          { id: 'leagueRules', l: 'כללי הליגה' }
         ].map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} className={`tape px-6 py-4 font-bold text-lg ${activeTab === t.id ? 'active' : ''}`}>{t.l}</button>
         ))}
@@ -272,8 +277,81 @@ export default function App() {
       </nav>
 
       <main className="max-w-6xl mx-auto p-4 mt-8">
+        {/* LEAGUE RULES */}
+        {activeTab === 'leagueRules' && (
+          <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+            <div className="text-center mb-10">
+              <Icon name="info" size={48} className="text-[var(--street-orange)] mb-4" />
+              <h2 className="text-5xl font-stencil text-white tracking-widest uppercase">כללי הליגה</h2>
+              <div className="h-1 w-24 bg-[var(--street-orange)] mx-auto mt-4"></div>
+            </div>
+
+            <div className="street-card p-8 space-y-6">
+              <div className="rule-item">
+                <h4 className="text-xl font-bold text-[var(--street-orange)] mb-2">הקדמה</h4>
+                <p className="text-neutral-300 leading-relaxed">ברוכים הבאים לליגת הסטריטבול של רגבים 3 על 3. הליגה הוקמה במטרה לקדם את תרבות הכדורסל הקהילתית והתחרותית במגרש הביתי שלנו. אנו מצפים למשחק הוגן, ספורטיבי ומכבד בין כל המשתתפים.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="rule-item">
+                  <h4 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <Icon name="users" size={18} className="text-[var(--street-orange)]" /> רישום וסגל
+                  </h4>
+                  <ul className="text-neutral-400 text-sm space-y-2">
+                    <li>• כל קבוצה רשאית לרשום עד 4 שחקנים בסגל.</li>
+                    <li>• השתתפות בליגה מגילאי 16 ומעלה.</li>
+                    <li>• בעת הרישום יש להזין שם פרטי ומשפחה מדויק.</li>
+                  </ul>
+                </div>
+
+                <div className="rule-item">
+                  <h4 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <Icon name="clock" size={18} className="text-[var(--street-orange)]" /> זמן ומהלך המשחק
+                  </h4>
+                  <ul className="text-neutral-400 text-sm space-y-2">
+                    <li>• משך כל משחק: 20 דקות של זמן רץ.</li>
+                    <li>• במקרה של שוויון: הארכה של 4 דקות נוספות.</li>
+                    <li>• בכל שבוע ישוחק משחק מחזור אחד לכל קבוצה.</li>
+                  </ul>
+                </div>
+
+                <div className="rule-item">
+                  <h4 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <Icon name="star" size={18} className="text-[var(--street-orange)]" /> שיטת הניקוד וחוקים
+                  </h4>
+                  <ul className="text-neutral-400 text-sm space-y-2">
+                    <li>• סל בתוך הקשת = 2 נקודות.</li>
+                    <li>• סל מחוץ לקשת = 3 נקודות.</li>
+                    <li>• אין זריקות עונשין.</li>
+                    <li>• קבוצה שקלעה מתחילה את ההתקפה הבאה (Make it Take it).</li>
+                  </ul>
+                </div>
+
+                <div className="rule-item">
+                  <h4 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <Icon name="trophy" size={18} className="text-[var(--street-orange)]" /> טבלה ודירוג
+                  </h4>
+                  <ul className="text-neutral-400 text-sm space-y-2">
+                    <li>• ניצחון = 2 נקודות | הפסד = 1 נקודה.</li>
+                    <li>• שוויון בנקודות בטבלה יוכרע לפי הפרש סלים.</li>
+                    <li>• 4 הראשונות בסוף העונה עולות לפיינל פור.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="rule-item border-none bg-orange-500/5 p-4 mt-8">
+                <h4 className="text-lg font-bold text-[var(--street-orange)] mb-2 flex items-center gap-2">
+                  <Icon name="alertCircle" size={18} /> חובת דיווח
+                </h4>
+                <p className="text-neutral-300 text-sm">לאחר כל משחק, קפטני הקבוצות מחויבים לעדכן את התוצאה באפליקציה באופן מיידי כדי לשמור על טבלה מעודכנת.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STANDINGS */}
         {activeTab === 'standings' && (
-          <div className="street-card-light overflow-hidden rounded shadow-2xl">
+          <div className="street-card-light overflow-hidden rounded shadow-2xl animate-fade-in">
             <table className="w-full text-right">
               <thead className="bg-neutral-200 border-b-2 font-bold text-black">
                 <tr><th className="p-4">מקום</th><th className="p-4">קבוצה</th><th className="p-4 text-center">נק'</th><th className="p-4 text-center">נצ'</th><th className="p-4 text-center">הפ'</th></tr>
@@ -294,6 +372,7 @@ export default function App() {
           </div>
         )}
 
+        {/* PLAYOFFS */}
         {activeTab === 'playoffs' && (
            <div className="space-y-8 animate-fade-in">
            <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
@@ -370,7 +449,7 @@ export default function App() {
         )}
 
         {activeTab === 'schedule' && (
-          <div className="space-y-10">
+          <div className="space-y-10 animate-fade-in">
             <h2 className="text-4xl font-stencil text-[var(--street-orange)] border-b-2 border-neutral-800 pb-2 uppercase tracking-widest">העונה הסדירה</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {matches.filter(m=>m.type==='regular').sort((a,b)=>a.roundIndex-b.roundIndex).map(m => (
@@ -391,7 +470,7 @@ export default function App() {
         )}
 
         {activeTab === 'teams' && (
-          <div className="space-y-8">
+          <div className="space-y-8 animate-fade-in">
              {isAdminMode && leagueStage === 'registration' && (
               <div className="street-card p-6 mb-8 border-[var(--street-orange)]">
                 <h3 className="font-stencil text-2xl mb-4 text-white uppercase tracking-widest">רישום קבוצה חדשה</h3>
