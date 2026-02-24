@@ -22,7 +22,8 @@ const Icon = ({ name, size = 24, className = '' }) => {
     clock: 'clock',
     alertCircle: 'alert-circle',
     userPlus: 'user-plus',
-    clipboard: 'clipboard-list'
+    clipboard: 'clipboard-list',
+    lock: 'lock'
   };
   return (
     <img 
@@ -209,6 +210,9 @@ export default function App() {
   // --- REGISTRATION ACTIONS ---
   const handleRegisterTeam = async (e) => {
     e.preventDefault();
+    if (leagueStage !== 'registration') {
+      return showMessage('הרישום לעונה זו סגור');
+    }
     if (!regTeamName.trim()) return showMessage('יש להזין שם קבוצה');
     const players = regPlayers.filter(p => p.trim());
     if (players.length < 3) return showMessage('מינימום 3 שחקנים לקבוצה');
@@ -234,13 +238,11 @@ export default function App() {
     const batch = writeBatch(db);
     const newTeamId = 't_' + Date.now();
     
-    // Add to teams
     batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'teams', newTeamId), {
       name: request.name,
       players: request.players
     });
     
-    // Delete request
     batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'registrationRequests', request.id));
     
     await batch.commit();
@@ -358,65 +360,85 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto p-4 mt-8">
         
-        {/* TEAM REGISTRATION (PUBLIC) */}
+        {/* TEAM REGISTRATION (SMART LOGIC) */}
         {activeTab === 'registration' && (
           <div className="animate-fade-in max-w-2xl mx-auto space-y-8">
             <div className="text-center mb-8">
-              <Icon name="userPlus" size={48} className="text-[var(--street-orange)] mb-4" />
-              <h2 className="text-5xl font-stencil text-white tracking-widest uppercase">רישום קבוצה לליגה</h2>
-              <p className="text-neutral-500 mt-2 font-bold tracking-widest uppercase">הצטרפו לזירה של רגבים</p>
+              <Icon name={leagueStage === 'registration' ? "userPlus" : "lock"} size={48} className="text-[var(--street-orange)] mb-4" />
+              <h2 className="text-5xl font-stencil text-white tracking-widest uppercase">
+                {leagueStage === 'registration' ? "רישום קבוצה לליגה" : "הרישום סגור"}
+              </h2>
+              <p className="text-neutral-500 mt-2 font-bold tracking-widest uppercase">
+                {leagueStage === 'registration' ? "הצטרפו לזירה של רגבים" : "העונה כבר החלה"}
+              </p>
             </div>
 
-            <div className="street-card p-10 bg-black/60 backdrop-blur-md">
-              <form onSubmit={handleRegisterTeam} className="space-y-6 text-right">
-                <div className="space-y-2">
-                  <label className="block text-white font-black tracking-widest uppercase text-sm">שם הקבוצה</label>
-                  <input 
-                    required
-                    type="text" 
-                    value={regTeamName} 
-                    onChange={e => setRegTeamName(e.target.value)} 
-                    placeholder="שם מגניב..."
-                    className="w-full bg-neutral-900 border-2 border-neutral-800 p-4 text-white font-bold focus:border-[var(--street-orange)] outline-none transition-colors"
-                  />
-                </div>
+            {leagueStage === 'registration' ? (
+              <div className="street-card p-10 bg-black/60 backdrop-blur-md">
+                <form onSubmit={handleRegisterTeam} className="space-y-6 text-right">
+                  <div className="space-y-2">
+                    <label className="block text-white font-black tracking-widest uppercase text-sm">שם הקבוצה</label>
+                    <input 
+                      required
+                      type="text" 
+                      value={regTeamName} 
+                      onChange={e => setRegTeamName(e.target.value)} 
+                      placeholder="שם מגניב..."
+                      className="w-full bg-neutral-900 border-2 border-neutral-800 p-4 text-white font-bold focus:border-[var(--street-orange)] outline-none transition-colors"
+                    />
+                  </div>
 
-                <div className="space-y-4">
-                  <label className="block text-white font-black tracking-widest uppercase text-sm">שחקני הקבוצה</label>
-                  {[
-                    { label: 'שחקן 1 (קפטן)', idx: 0 },
-                    { label: 'שחקן 2', idx: 1 },
-                    { label: 'שחקן 3', idx: 2 },
-                    { label: 'שחקן 4 (מחליף)', idx: 3 },
-                  ].map((p, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <span className="text-[var(--street-orange)] font-stencil text-2xl w-8">{i + 1}</span>
-                      <input 
-                        required={i < 3}
-                        type="text" 
-                        value={regPlayers[i]} 
-                        placeholder={p.label}
-                        onChange={e => {
-                          const updated = [...regPlayers];
-                          updated[i] = e.target.value;
-                          setRegPlayers(updated);
-                        }}
-                        className="flex-1 bg-neutral-900 border-b-2 border-neutral-800 p-3 text-white font-bold focus:border-[var(--street-orange)] outline-none transition-colors"
-                      />
-                    </div>
-                  ))}
-                </div>
+                  <div className="space-y-4">
+                    <label className="block text-white font-black tracking-widest uppercase text-sm">שחקני הקבוצה</label>
+                    {[
+                      { label: 'שחקן 1 (קפטן)', idx: 0 },
+                      { label: 'שחקן 2', idx: 1 },
+                      { label: 'שחקן 3', idx: 2 },
+                      { label: 'שחקן 4 (מחליף)', idx: 3 },
+                    ].map((p, i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <span className="text-[var(--street-orange)] font-stencil text-2xl w-8">{i + 1}</span>
+                        <input 
+                          required={i < 3}
+                          type="text" 
+                          value={regPlayers[i]} 
+                          placeholder={p.label}
+                          onChange={e => {
+                            const updated = [...regPlayers];
+                            updated[i] = e.target.value;
+                            setRegPlayers(updated);
+                          }}
+                          className="flex-1 bg-neutral-900 border-b-2 border-neutral-800 p-3 text-white font-bold focus:border-[var(--street-orange)] outline-none transition-colors"
+                        />
+                      </div>
+                    ))}
+                  </div>
 
+                  <button 
+                    disabled={isSubmitting}
+                    type="submit"
+                    className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-all tracking-widest text-xl shadow-[0_5px_15px_rgba(255,87,34,0.3)] disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'שולח בקשה...' : 'שלח בקשה להצטרפות'}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="street-card p-12 text-center bg-black/40 border-dashed border-neutral-700">
+                <Icon name="shield-alert" size={64} className="text-neutral-600 mb-6 mx-auto" />
+                <h4 className="text-2xl font-bold text-white mb-2 tracking-widest uppercase">ההרשמה נסגרה לעונה הנוכחית</h4>
+                <p className="text-neutral-500 max-w-sm mx-auto leading-relaxed">
+                  הליגה נמצאת כרגע בעיצומה ולא ניתן להוסיף קבוצות חדשות. 
+                  <br />עקבו אחרי הטבלה והיו מוכנים לעונה הבאה!
+                </p>
                 <button 
-                  disabled={isSubmitting}
-                  type="submit"
-                  className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-all tracking-widest text-xl shadow-[0_5px_15px_rgba(255,87,34,0.3)] disabled:opacity-50"
+                  onClick={() => setActiveTab('standings')}
+                  className="mt-8 bg-neutral-800 text-white px-8 py-3 font-bold uppercase hover:bg-white hover:text-black transition-colors"
                 >
-                  {isSubmitting ? 'שולח בקשה...' : 'שלח בקשה להצטרפות'}
+                  צפה בטבלה המעודכנת
                 </button>
-                <p className="text-center text-neutral-600 text-xs mt-4">שימו לב: הרישום דורש אישור מנהל לפני הופעה בטבלת הליגה.</p>
-              </form>
-            </div>
+              </div>
+            )}
           </div>
         )}
 
