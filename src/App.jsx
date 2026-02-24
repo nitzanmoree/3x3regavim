@@ -25,7 +25,9 @@ const Icon = ({ name, size = 24, className = '' }) => {
     clipboard: 'clipboard-list',
     lock: 'lock',
     award: 'award',
-    shirt: 'shirt'
+    shirt: 'shirt',
+    menu: 'menu',
+    chevronDown: 'chevron-down'
   };
   return (
     <img 
@@ -150,6 +152,16 @@ body {
   border: 1px solid rgba(255,179,0,0.3);
 }
 
+.mobile-menu-item {
+  border-right: 2px solid transparent;
+  transition: 0.2s;
+}
+.mobile-menu-item.active {
+  border-right-color: var(--street-orange);
+  background: rgba(255,87,34,0.1);
+  color: var(--street-orange);
+}
+
 .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 `;
@@ -163,6 +175,7 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   // Data State
   const [teams, setTeams] = useState([]);
@@ -173,19 +186,27 @@ export default function App() {
   const [leagueStartDate, setLeagueStartDate] = useState('');
   const [makeupDates, setMakeupDates] = useState('');
   
-  // Form States (Registration with Sizes)
+  // Form States
   const [regTeamName, setRegTeamName] = useState('');
   const [regPlayers, setRegPlayers] = useState([
-    { name: '', size: 'M' },
-    { name: '', size: 'M' },
-    { name: '', size: 'M' },
-    { name: '', size: 'M' }
+    { name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [newHofYear, setNewHofYear] = useState(new Date().getFullYear().toString());
   const [manualHofTeam, setManualHofTeam] = useState('');
   const [manualHofPlayers, setManualHofPlayers] = useState('');
+
+  // --- TAB DEFINITIONS ---
+  const tabs = [
+    { id: 'standings', l: 'טבלה', i: 'award' },
+    { id: 'schedule', l: 'לוח משחקים', i: 'calendar-days' },
+    { id: 'playoffs', l: 'פיינל פור', i: 'trophy' },
+    { id: 'teams', l: 'קבוצות', i: 'users' },
+    { id: 'registration', l: 'רישום', i: 'userPlus' },
+    { id: 'hallOfFame', l: 'היכל התהילה', i: 'crown' },
+    { id: 'leagueRules', l: 'כללים', i: 'info' }
+  ];
 
   // --- BROWSER TITLE & AUTH ---
   useEffect(() => {
@@ -234,7 +255,6 @@ export default function App() {
   const standings = useMemo(() => {
     const stats = {};
     teams.forEach(t => stats[t.id] = { id: t.id, name: t.name, points: 0, wins: 0, losses: 0, pf: 0, pa: 0, diff: 0 });
-    
     matches.filter(m => m.isPlayed && m.type === 'regular').forEach(m => {
       const hId = m.homeTeam.id, aId = m.awayTeam.id;
       if (!stats[hId] || !stats[aId]) return;
@@ -248,7 +268,6 @@ export default function App() {
     return Object.values(stats).map(s => ({ ...s, diff: s.pf - s.pa })).sort((a, b) => b.points - a.points || b.diff - a.diff);
   }, [teams, matches]);
 
-  // --- SHIRT SUMMARY FOR ADMIN ---
   const shirtSummary = useMemo(() => {
     const summary = { 'S': 0, 'M': 0, 'L': 0, 'XL': 0, 'XXL': 0 };
     teams.forEach(t => {
@@ -281,17 +300,13 @@ export default function App() {
     if (leagueStage !== 'registration') return showMessage('הרישום לעונה זו סגור');
     const validPlayers = regPlayers.filter(p => p.name.trim() !== '');
     if (validPlayers.length < 3) return showMessage('מינימום 3 שחקנים לקבוצה');
-
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'registrationRequests'), {
-        name: regTeamName,
-        players: validPlayers,
-        createdAt: Date.now()
+        name: regTeamName, players: validPlayers, createdAt: Date.now()
       });
       showMessage('בקשת רישום נשלחה לאישור מנהל');
-      setRegTeamName(''); 
-      setRegPlayers([{ name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }]);
+      setRegTeamName(''); setRegPlayers([{ name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }, { name: '', size: 'M' }]);
       setActiveTab('standings');
     } catch (err) { showMessage('שגיאה בשליחת הבקשה'); }
     setIsSubmitting(false);
@@ -368,18 +383,16 @@ export default function App() {
     e.preventDefault();
     if (!manualHofTeam.trim()) return showMessage('הזן שם קבוצה');
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', 'h_' + Date.now()), { 
-      year: newHofYear, 
-      teamName: manualHofTeam, 
-      players: manualHofPlayers 
+      year: newHofYear, teamName: manualHofTeam, players: manualHofPlayers 
     });
     setManualHofTeam(''); setManualHofPlayers('');
     showMessage('נוסף להיכל התהילה');
   };
 
   const deleteHof = async (id) => {
-    if (window.confirm('האם למחוק את הרשומה מהיכל התהילה?')) {
+    if (window.confirm('האם למחוק מהיכל התהילה?')) {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', id));
-      showMessage('הרשומה נמחקה מהענן');
+      showMessage('הרשומה נמחקה');
     }
   };
 
@@ -397,6 +410,7 @@ export default function App() {
   if (!isDBReady) return <div className="min-h-screen bg-black flex items-center justify-center text-white font-stencil text-2xl animate-pulse">מחבר למגרש...</div>;
 
   const finalMatch = matches.find(m => m.id === 'ff_final');
+  const activeTabLabel = tabs.find(t => t.id === activeTab)?.l || '';
 
   return (
     <div className="min-h-screen pb-20">
@@ -406,7 +420,6 @@ export default function App() {
       <header className="header-graffiti pt-20 pb-16 px-4 text-center">
         <svg className="splatter top-4 left-10 w-24 h-24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="var(--street-orange)" filter="blur(20px)"/></svg>
         <svg className="splatter bottom-0 right-20 w-40 h-40" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="var(--street-orange)" filter="blur(30px)"/></svg>
-        
         <div className="relative z-10">
           <div className="inline-block border-y-4 border-white py-2 px-8 mb-4">
             <h1 className="font-stencil text-7xl md:text-9xl text-white uppercase graffiti-text leading-tight">
@@ -421,24 +434,42 @@ export default function App() {
         </div>
       </header>
 
-      {/* NAV */}
-      <nav className="max-w-6xl mx-auto sticky top-0 z-50 bg-[#0f0f0f]/95 backdrop-blur-md border-b border-neutral-800 flex flex-wrap justify-center shadow-xl">
-        {[
-          { id: 'standings', l: 'טבלה', i: 'award' },
-          { id: 'schedule', l: 'לוח משחקים', i: 'calendar-days' },
-          { id: 'playoffs', l: 'פיינל פור', i: 'trophy' },
-          { id: 'teams', l: 'קבוצות', i: 'users' },
-          { id: 'registration', l: 'רישום', i: 'userPlus' },
-          { id: 'hallOfFame', l: 'היכל התהילה', i: 'crown' },
-          { id: 'leagueRules', l: 'כללים', i: 'info' }
-        ].map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} className={`tape px-5 py-4 font-bold text-base flex items-center gap-2 ${activeTab === t.id ? 'active' : ''}`}>
-            <Icon name={t.i} size={16} /> {t.l}
+      {/* NAV - RESPONSIVE WITH HAMBURGER */}
+      <nav className="max-w-6xl mx-auto sticky top-0 z-50 bg-[#0f0f0f]/95 backdrop-blur-md border-b border-neutral-800 shadow-xl">
+        {/* Mobile Nav Top Bar */}
+        <div className="md:hidden flex justify-between items-center p-4">
+          <div className="flex items-center gap-2 text-[var(--street-orange)] font-black uppercase tracking-widest">
+             <Icon name={tabs.find(t=>t.id===activeTab)?.i} size={18} />
+             <span>{activeTabLabel}</span>
+          </div>
+          <button 
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="text-white p-2 border border-neutral-800 rounded bg-[#1a1a1a]"
+          >
+            <Icon name={isMenuOpen ? "x" : "menu"} size={24} />
           </button>
-        ))}
-        <button onClick={toggleAdmin} className="px-6 py-4 text-neutral-500 hover:text-white flex items-center gap-2 border-l border-neutral-800 transition-colors">
-          <Icon name="settings" size={16} /> {isAdminMode ? 'יציאה' : 'מנהל'}
-        </button>
+        </div>
+
+        {/* Desktop Nav / Mobile Dropdown */}
+        <div className={`${isMenuOpen ? 'flex' : 'hidden'} md:flex flex-col md:flex-row justify-center md:items-center w-full bg-[#0f0f0f] md:bg-transparent overflow-hidden transition-all duration-300`}>
+          {tabs.map(t => (
+            <button 
+              key={t.id} 
+              onClick={() => { setActiveTab(t.id); setIsMenuOpen(false); }} 
+              className={`px-6 py-4 font-bold text-base flex items-center gap-3 border-b-2 border-transparent transition-all
+                ${activeTab === t.id ? 'active text-[var(--street-orange)] bg-neutral-900 md:border-[var(--street-orange)]' : 'text-neutral-500 hover:text-white md:hover:bg-white/5'}
+                md:w-auto w-full text-right`}
+            >
+              <Icon name={t.i} size={16} /> {t.l}
+            </button>
+          ))}
+          <button 
+            onClick={() => { toggleAdmin(); setIsMenuOpen(false); }} 
+            className="px-6 py-4 text-neutral-500 hover:text-white flex items-center gap-3 border-l border-neutral-800 transition-colors md:w-auto w-full text-right"
+          >
+            <Icon name="settings" size={16} /> {isAdminMode ? 'יציאה מניהול' : 'כניסת מנהל'}
+          </button>
+        </div>
       </nav>
 
       <main className="max-w-6xl mx-auto p-4 mt-10">
@@ -450,8 +481,8 @@ export default function App() {
                <h2 className="text-4xl font-stencil text-white tracking-widest uppercase">דירוג הקבוצות</h2>
                <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest">Regular Season Stats</span>
             </div>
-            <div className="street-card overflow-hidden rounded-lg">
-              <table className="w-full text-right">
+            <div className="street-card overflow-x-auto rounded-lg">
+              <table className="w-full text-right min-w-[500px]">
                 <thead className="bg-[#1a1a1a] border-b border-neutral-800 font-bold text-neutral-400 text-xs uppercase tracking-widest">
                   <tr><th className="p-5">#</th><th className="p-5">קבוצה</th><th className="p-5 text-center">נק'</th><th className="p-5 text-center">נצ'</th><th className="p-5 text-center">הפ'</th><th className="p-5 text-center">הפרש סלים</th></tr>
                 </thead>
@@ -466,14 +497,13 @@ export default function App() {
                       <td className={`p-5 text-center font-black text-lg ${t.diff > 0 ? 'text-green-500' : t.diff < 0 ? 'text-red-500' : 'text-neutral-500'}`} dir="ltr">{t.diff > 0 ? `+${t.diff}` : t.diff}</td>
                     </tr>
                   ))}
-                  {standings.length === 0 && <tr><td colSpan="6" className="p-20 text-center text-neutral-600 font-bold">הליגה ממתינה לאישור הקבוצות הראשונות.</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* REGISTRATION WITH SIZES */}
+        {/* REGISTRATION */}
         {activeTab === 'registration' && (
           <div className="animate-fade-in max-w-2xl mx-auto space-y-8">
             <div className="text-center">
@@ -481,7 +511,7 @@ export default function App() {
               <p className="text-neutral-500 font-bold uppercase tracking-wider">{leagueStage === 'registration' ? "הצטרפו לזירה עכשיו" : "ההרשמה סגורה כרגע"}</p>
             </div>
             {leagueStage === 'registration' ? (
-              <div className="street-card p-10 relative">
+              <div className="street-card p-6 md:p-10 relative">
                 <form onSubmit={handleRegisterTeam} className="space-y-6">
                   <div>
                     <label className="block text-white font-black text-xs uppercase mb-2">שם הקבוצה</label>
@@ -492,10 +522,7 @@ export default function App() {
                     {['קפטן', 'שחקן 2', 'שחקן 3', 'מחליף'].map((label, i) => (
                       <div key={i} className="flex gap-2">
                         <input 
-                          required={i < 3} 
-                          type="text" 
-                          value={regPlayers[i].name} 
-                          placeholder={label} 
+                          required={i < 3} type="text" value={regPlayers[i].name} placeholder={label} 
                           onChange={e=>{const up=[...regPlayers];up[i].name=e.target.value;setRegPlayers(up);}} 
                           className="flex-1 bg-[#0a0a0a] border-b border-neutral-800 p-3 text-white font-bold outline-none focus:border-[var(--street-orange)]" 
                         />
@@ -515,7 +542,7 @@ export default function App() {
             ) : (
               <div className="street-card p-12 text-center border-dashed opacity-60">
                 <Icon name="lock" size={60} className="mx-auto mb-6 text-neutral-600" />
-                <h4 className="text-2xl font-bold mb-2">ההרשמה הסתיימה</h4>
+                <h4 className="text-2xl font-bold mb-2 uppercase">ההרשמה הסתיימה</h4>
                 <p className="text-neutral-500">העונה כבר בעיצומה. נתראה במחזור הבא!</p>
               </div>
             )}
@@ -529,7 +556,7 @@ export default function App() {
                <div className="inline-block p-4 border-2 border-[var(--street-yellow)] rounded-full mb-4">
                  <Icon name="crown" size={48} className="text-[var(--street-yellow)]" />
                </div>
-               <h2 className="text-6xl font-stencil text-white tracking-[0.2em] uppercase">היכל התהילה</h2>
+               <h2 className="text-5xl md:text-6xl font-stencil text-white tracking-[0.2em] uppercase">היכל התהילה</h2>
             </div>
 
             {isAdminMode && (
@@ -551,7 +578,7 @@ export default function App() {
                     <button onClick={() => deleteHof(w.id)} className="absolute top-4 left-4 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white w-8 h-8 rounded flex items-center justify-center transition-all z-20 border border-red-600/50"><Icon name="x" size={16}/></button>
                   )}
                   <div className="text-[var(--street-yellow)] font-stencil text-4xl mb-4 tracking-widest">{w.year}</div>
-                  <h3 className="text-5xl font-stencil text-white uppercase tracking-widest mb-6 group-hover:scale-110 transition-transform">{w.teamName}</h3>
+                  <h3 className="text-4xl md:text-5xl font-stencil text-white uppercase tracking-widest mb-6 group-hover:scale-110 transition-transform">{w.teamName}</h3>
                   <div className="bg-black/50 py-3 px-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">{w.players}</div>
                 </div>
               ))}
@@ -564,7 +591,6 @@ export default function App() {
           <div className="animate-fade-in space-y-10">
             {isAdminMode && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-                {/* Pending Requests */}
                 <div className="lg:col-span-2 space-y-4">
                   <h3 className="text-2xl font-bold text-[var(--street-yellow)] uppercase tracking-widest flex items-center gap-3">
                     <Icon name="alertCircle" size={24} /> בקשות רישום ({pendingRegistrations.length})
@@ -588,7 +614,6 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-                {/* Shirt Summary */}
                 <div className="street-card p-6 border-[var(--street-orange)] bg-black/40 h-fit">
                    <h3 className="text-xl font-bold text-white mb-4 uppercase flex items-center gap-2">
                      <Icon name="shirt" size={18} className="text-[var(--street-orange)]" /> ריכוז חולצות
@@ -600,18 +625,11 @@ export default function App() {
                           <span className="text-[var(--street-yellow)] text-lg">{count}</span>
                         </div>
                       ))}
-                      <div className="pt-2 flex justify-between text-white border-t border-neutral-700">
-                        <span>סה"כ חולצות:</span>
-                        <span className="text-[var(--street-orange)] text-xl">{Object.values(shirtSummary).reduce((a, b) => a + b, 0)}</span>
-                      </div>
                    </div>
                 </div>
               </div>
             )}
-            
-            <div className="flex items-center gap-3 border-b border-neutral-800 pb-2 mb-6">
-              <h3 className="text-3xl font-stencil text-white tracking-widest uppercase">קבוצות מאושרות</h3>
-            </div>
+            <h3 className="text-3xl font-stencil text-white tracking-widest uppercase border-b border-neutral-800 pb-2">קבוצות מאושרות</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {teams.map(t => (
                 <div key={t.id} className="street-card overflow-hidden group">
@@ -659,7 +677,7 @@ export default function App() {
         {/* PLAYOFFS */}
         {activeTab === 'playoffs' && (
            <div className="animate-fade-in space-y-12">
-             <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
+             <div className="flex flex-col md:flex-row justify-between md:items-center border-b border-neutral-800 pb-4 gap-4">
                <h2 className="text-4xl font-stencil text-[var(--street-yellow)] tracking-widest uppercase">שלב הפיינל פור</h2>
                <div className="flex gap-2">
                  {isAdminMode && leagueStage === 'regular' && <button onClick={startFinalFour} className="bg-white text-black px-5 py-2 font-black text-xs uppercase hover:bg-[var(--street-orange)] transition-colors">הפעל פיינל פור</button>}
@@ -671,7 +689,7 @@ export default function App() {
                <div className="street-card p-8 text-center border-[var(--street-yellow)] border-2 animate-fade-in">
                   <Icon name="crown" size={60} className="text-[var(--street-yellow)] mx-auto mb-4" />
                   <h3 className="text-3xl font-stencil text-white mb-6 tracking-widest uppercase">יש אלופה! הכתר והעלה להיכל</h3>
-                  <div className="flex justify-center items-center gap-4">
+                  <div className="flex flex-col md:flex-row justify-center items-center gap-4">
                     <input type="text" value={newHofYear} onChange={e=>setNewHofYear(e.target.value)} className="bg-black border border-neutral-700 p-2 text-white w-24 text-center font-bold" />
                     <button onClick={promoteToHof} className="bg-[var(--street-yellow)] text-black font-black px-10 py-3 uppercase hover:bg-white transition-all shadow-xl">הכתרה רשמית</button>
                   </div>
@@ -691,9 +709,9 @@ export default function App() {
                     </div>
                     {!m.isPlayed && (
                       <div className="mt-8 pt-8 border-t border-neutral-800 flex justify-center items-center gap-4">
-                        <input type="number" id={`h_${m.id}`} className="w-20 h-14 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white outline-none" placeholder="0" />
-                        <button onClick={() => updateScore(m.id, document.getElementById(`h_${m.id}`).value, document.getElementById(`a_${m.id}`).value)} className="bg-[var(--street-orange)] text-black font-black px-8 py-3 uppercase hover:bg-white transition-colors">עדכן</button>
-                        <input type="number" id={`a_${m.id}`} className="w-20 h-14 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white outline-none" placeholder="0" />
+                        <input type="number" id={`h_${m.id}`} className="w-16 h-12 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white" placeholder="0" />
+                        <button onClick={() => updateScore(m.id, document.getElementById(`h_${m.id}`).value, document.getElementById(`a_${m.id}`).value)} className="bg-[var(--street-orange)] text-black font-black px-6 py-2 uppercase text-xs">עדכן</button>
+                        <input type="number" id={`a_${m.id}`} className="w-16 h-12 bg-black border-b-2 border-neutral-800 text-center text-4xl font-black text-white" placeholder="0" />
                       </div>
                     )}
                   </div>
@@ -715,7 +733,7 @@ export default function App() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rule-block">
-                <h4 className="text-white font-bold mb-2">סגל ורישום</h4>
+                <h4 className="text-white font-bold mb-2 uppercase">סגל ורישום</h4>
                 <ul className="text-neutral-400 text-xs space-y-2">
                   <li>• עד 4 שחקנים בקבוצה (3+1).</li>
                   <li>• גילאי 16 ומעלה בלבד.</li>
@@ -723,7 +741,7 @@ export default function App() {
                 </ul>
               </div>
               <div className="rule-block">
-                <h4 className="text-white font-bold mb-2">חוקי המשחק</h4>
+                <h4 className="text-white font-bold mb-2 uppercase">חוקי המשחק</h4>
                 <ul className="text-neutral-400 text-xs space-y-2">
                   <li>• משך משחק: 20 דקות (זמן רץ).</li>
                   <li>• שוויון: תוספת הארכה של 4 דקות.</li>
@@ -732,7 +750,7 @@ export default function App() {
               </div>
             </div>
             <div className="rule-block border-none bg-orange-600/10 rounded-lg">
-               <h4 className="text-[var(--street-orange)] font-bold mb-2">חובת דיווח</h4>
+               <h4 className="text-[var(--street-orange)] font-bold mb-2 uppercase">חובת דיווח</h4>
                <p className="text-neutral-300 text-xs font-bold">לאחר כל משחק, קפטני הקבוצות מחויבים לעדכן את התוצאה באפליקציה באופן מיידי.</p>
             </div>
           </div>
@@ -741,7 +759,7 @@ export default function App() {
 
       {/* LOGIN MODAL */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-neutral-900 border border-neutral-800 p-12 max-w-sm w-full shadow-2xl relative">
              <button onClick={()=>setShowLoginModal(false)} className="absolute top-6 left-6 text-neutral-600 hover:text-white"><Icon name="x" size={24}/></button>
             <h3 className="text-4xl font-stencil text-white mb-10 text-center tracking-widest uppercase">Admin Entry</h3>
@@ -749,17 +767,8 @@ export default function App() {
               <input type="text" placeholder="Username" value={adminUser} onChange={e=>setAdminUser(e.target.value)} className="w-full bg-black border border-neutral-800 p-4 text-white font-bold" />
               <input type="password" placeholder="Password" value={adminPass} onChange={e=>setAdminPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} className="w-full bg-black border border-neutral-800 p-4 text-white font-bold" dir="ltr" />
             </div>
-            <button onClick={handleLogin} className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-all tracking-widest text-xl">Login</button>
+            <button onClick={handleLogin} className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-all tracking-widest text-xl font-stencil">Login</button>
           </div>
-        </div>
-      )}
-
-      {/* ADMIN CONTROL PANEL */}
-      {isAdminMode && (
-        <div className="fixed bottom-4 left-4 z-50 flex gap-2">
-           <button onClick={resetSeasonOnly} className="bg-red-900/40 hover:bg-red-600 text-red-500 hover:text-white p-2 border border-red-900 transition-all text-[10px] font-black px-4 flex items-center gap-2 rounded uppercase tracking-widest shadow-xl">
-            <Icon name="history" size={14} /> Reset Season
-          </button>
         </div>
       )}
 
@@ -768,6 +777,15 @@ export default function App() {
         <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[300] bg-[var(--street-orange)] text-black font-black px-10 py-5 shadow-2xl animate-bounce flex items-center gap-4 text-lg border-2 border-white/20">
           <Icon name="check" size={24} />
           <span>{notification}</span>
+        </div>
+      )}
+      
+      {/* ADMIN CONTROL PANEL - RESET SEASON */}
+      {isAdminMode && (
+        <div className="fixed bottom-4 left-4 z-50 flex gap-2">
+           <button onClick={resetSeasonOnly} className="bg-red-900/40 hover:bg-red-600 text-red-500 hover:text-white p-2 border border-red-900 transition-all text-[10px] font-black px-4 flex items-center gap-2 rounded uppercase tracking-widest shadow-xl">
+            <Icon name="history" size={14} /> Reset Current Season
+          </button>
         </div>
       )}
     </div>
