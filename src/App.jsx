@@ -92,21 +92,54 @@ body {
   letter-spacing: 2px;
 }
 
-/* Header Area with Image Background */
 .header-area {
   width: 100%;
-  padding: 0;
+  padding: 4rem 1rem;
   overflow: hidden;
   position: relative;
   background: #000;
   border-bottom: 5px solid var(--street-orange);
+  text-align: center;
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
-.header-image {
+.header-image-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  max-height: 500px;
+  height: 100%;
   object-fit: cover;
-  display: block;
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.title-box {
+  display: inline-block;
+  padding: 1rem 2rem;
+  background: rgba(0,0,0,0.85);
+  border: 4px solid #ffffff;
+  box-shadow: 12px 12px 0px var(--street-orange);
+  transform: rotate(-1.5deg);
+  position: relative;
+  z-index: 10;
+}
+
+.graffiti-main {
+  font-size: 5.5rem;
+  line-height: 0.85;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: 2px 2px 0px var(--street-orange);
+}
+
+@media (max-width: 768px) {
+  .graffiti-main { font-size: 3.2rem; }
+  .header-area { padding: 3rem 1rem 2rem; min-height: 200px; }
 }
 
 .nav-container {
@@ -295,63 +328,38 @@ export default function App() {
     await batch.commit(); setIsDBReady(true);
   };
 
-  // --- LEAGUE GENERATION LOGIC ---
   const generateLeagueSchedule = async () => {
     if (teams.length < 2) return showMessage('צריך לפחות 2 קבוצות כדי להתחיל ליגה');
     if (!window.confirm(`האם להוציא את הליגה לדרך עם ${teams.length} קבוצות?`)) return;
-
     const batch = writeBatch(db);
     const teamList = [...teams];
     if (teamList.length % 2 !== 0) teamList.push({ id: 'bye', name: 'מנוחה' });
-
     const numTeams = teamList.length;
     const numRounds = numTeams - 1;
     const matchesPerRound = numTeams / 2;
-
     const startDate = new Date();
-    // Round to nearest Sunday or chosen start day (optional)
-    
     for (let round = 0; round < numRounds; round++) {
       const roundDate = new Date(startDate);
       roundDate.setDate(startDate.getDate() + (round * 7));
       const dateStr = roundDate.toLocaleDateString('he-IL');
-
       for (let i = 0; i < matchesPerRound; i++) {
         const home = teamList[i];
         const away = teamList[numTeams - 1 - i];
-
         if (home.id !== 'bye' && away.id !== 'bye') {
           const matchId = `m_${round}_${i}`;
           batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', matchId), {
-            homeTeam: home,
-            awayTeam: away,
-            homeScore: '',
-            awayScore: '',
-            isPlayed: false,
-            roundName: `מחזור ${round + 1}`,
-            roundDates: dateStr,
-            roundIndex: round,
-            type: 'regular'
+            homeTeam: home, awayTeam: away, homeScore: '', awayScore: '', isPlayed: false,
+            roundName: `מחזור ${round + 1}`, roundDates: dateStr, roundIndex: round, type: 'regular'
           });
         }
       }
-      // Rotate for Round Robin (fixed index 0)
       teamList.splice(1, 0, teamList.pop());
     }
-
     const lastRoundDate = new Date(startDate);
     lastRoundDate.setDate(startDate.getDate() + (numRounds * 7));
-    const makeupDateStr = lastRoundDate.toLocaleDateString('he-IL');
-
-    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), {
-      leagueStage: 'regular',
-      leagueStartDate: startDate.toISOString(),
-      makeupDates: makeupDateStr
-    });
-
+    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { leagueStage: 'regular', leagueStartDate: startDate.toISOString(), makeupDates: lastRoundDate.toLocaleDateString('he-IL') });
     await batch.commit();
-    showMessage('הליגה יצאה לדרך! לוח המשחקים נוצר');
-    setActiveTab('schedule');
+    showMessage('הליגה יצאה לדרך!'); setActiveTab('schedule');
   };
 
   const handleRegisterTeam = async (e) => {
@@ -389,10 +397,20 @@ export default function App() {
     if (!fm || !fm.isPlayed) return;
     const winner = fm.homeScore > fm.awayScore ? fm.homeTeam : fm.awayTeam;
     const winnerData = teams.find(t => t.id === winner.id) || winner;
-    const playersStr = Array.isArray(winnerData.players) ? winnerData.players.map(p => p.name).join(', ') : '';
+    const playersStr = Array.isArray(winnerData.players) ? winnerData.players.map(p => typeof p === 'object' ? p.name : p).join(', ') : '';
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', 'h_' + Date.now()), { year: newHofYear, teamName: winnerData.name, players: playersStr });
     showMessage(`${winnerData.name} הוכתרה כאלופה!`);
     setActiveTab('hallOfFame');
+  };
+
+  const addManualHof = async (e) => {
+    e.preventDefault();
+    if (!manualHofTeam.trim()) return showMessage('הזן שם קבוצה');
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', 'h_' + Date.now()), { 
+      year: newHofYear, teamName: manualHofTeam, players: manualHofPlayers 
+    });
+    setManualHofTeam(''); setManualHofPlayers('');
+    showMessage('נוסף להיכל התהילה');
   };
 
   const resetSeasonOnly = async () => {
@@ -411,13 +429,39 @@ export default function App() {
   const finalMatch = matches.find(m => m.id === 'ff_final');
   const activeTabObj = tabs.find(t => t.id === activeTab);
 
+  // Helper function to safely render players from any format
+  const renderPlayersSafe = (playersData) => {
+    if (typeof playersData === 'string') return playersData;
+    if (Array.isArray(playersData)) {
+      return playersData.map(p => typeof p === 'object' ? p.name : p).join(', ');
+    }
+    return '';
+  };
+
   return (
     <div className="min-h-screen pb-20">
       <style>{customStyles}</style>
 
-      {/* HEADER WITH IMAGE */}
+      {/* HEADER WITH TEXT & IMAGE OVERLAY */}
       <header className="header-area">
-        <img src="https://firebasestorage.googleapis.com/v0/b/streetballregavim.firebasestorage.app/o/headers%2F%D7%A1%D7%98%D7%A8%D7%99%D7%98%D7%91%D7%95%D7%9C%20%D7%A8%D7%92%D7%91%D7%99%D7%9D.jpg?alt=media" alt="סטריטבול רגבים" className="header-image" onError={(e) => e.target.src="https://via.placeholder.com/1200x400/000000/FFFFFF?text=STREETBALL+REGAVIM"} />
+        <img 
+          src="https://firebasestorage.googleapis.com/v0/b/streetballregavim.firebasestorage.app/o/headers%2F%D7%A1%D7%98%D7%A8%D7%99%D7%98%D7%91%D7%95%D7%9C%20%D7%A8%D7%92%D7%91%D7%99%D7%9D.jpg?alt=media" 
+          alt="סטריטבול רגבים" 
+          className="header-image-bg" 
+          onError={(e) => { e.target.style.display = 'none'; }} 
+        />
+        <div className="title-box">
+          <h1 className="font-stencil graffiti-main">
+            STREETBALL <span className="text-[var(--street-orange)]">REGAVIM</span>
+          </h1>
+        </div>
+        <div className="mt-8 flex justify-center items-center gap-4 opacity-50 relative z-10">
+          <div className="h-px w-12 bg-white"></div>
+          <Icon name="zap" size={20} color="#ff5722" />
+          <span className="font-stencil text-2xl uppercase tracking-[4px]">Elite 3x3 League</span>
+          <Icon name="zap" size={20} color="#ff5722" />
+          <div className="h-px w-12 bg-white"></div>
+        </div>
       </header>
 
       {/* NAV */}
@@ -488,7 +532,6 @@ export default function App() {
         {/* STANDINGS & ADMIN LAUNCH PAD */}
         {activeTab === 'standings' && (
           <div className="animate-in space-y-8">
-            {/* ADMIN LEAGUE LAUNCHER */}
             {isAdminMode && leagueStage === 'registration' && (
               <div className="admin-launch-pad p-8 rounded-lg text-center animate-pulse">
                 <Icon name="rocket" size={48} color="#ffb300" className="mb-4 mx-auto" />
@@ -554,7 +597,6 @@ export default function App() {
                     )}
                   </div>
                 ))}
-                {matches.filter(m=>m.type==='regular').length === 0 && <div className="col-span-full py-20 text-center text-neutral-600 font-stencil text-2xl uppercase border-2 border-dashed border-neutral-900 rounded-xl">לוח המשחקים ייווצר לאחר הזנקת הליגה על ידי המנהל</div>}
              </div>
            </div>
         )}
@@ -569,7 +611,7 @@ export default function App() {
 
             {isAdminMode && (
               <div className="street-card p-6 border-[var(--street-yellow)] max-w-2xl mx-auto">
-                <h4 className="text-lg font-bold text-white mb-4 uppercase">ניהול ידני - היכל התהילה</h4>
+                <h4 className="text-lg font-bold text-white mb-4 uppercase">ניהול ידני</h4>
                 <form onSubmit={addManualHof} className="flex flex-col md:flex-row gap-4">
                   <input required type="text" placeholder="שנה" value={newHofYear} onChange={e=>setNewHofYear(e.target.value)} className="w-20 bg-black border p-2 text-white" />
                   <input required type="text" placeholder="שם הקבוצה" value={manualHofTeam} onChange={e=>setManualHofTeam(e.target.value)} className="flex-1 bg-black border p-2 text-white" />
@@ -589,7 +631,7 @@ export default function App() {
                   <div className="font-stencil text-6xl text-[var(--street-yellow)] mb-4">{w.year}</div>
                   <h3 className="font-stencil text-7xl text-white uppercase mb-6 transition-transform group-hover:scale-105">{w.teamName}</h3>
                   <div className="text-sm font-bold text-neutral-400 leading-loose pt-4 border-t border-neutral-800/50">
-                    {w.players}
+                    {renderPlayersSafe(w.players)}
                   </div>
                 </div>
               ))}
@@ -612,9 +654,7 @@ export default function App() {
                         <div>
                           <h4 className="text-white font-black text-2xl">{r.name}</h4>
                           <div className="text-neutral-500 text-xs font-black uppercase mt-2">
-                            {r.players.map((p,pi) => (
-                              <span key={pi} className="ml-2">{p.name} ({p.size}){pi < r.players.length-1 ? ',' : ''}</span>
-                            ))}
+                            {renderPlayersSafe(r.players)}
                           </div>
                         </div>
                         <div className="flex flex-col gap-2">
@@ -646,15 +686,15 @@ export default function App() {
               {teams.map(t => (
                 <div key={t.id} className="street-card overflow-hidden group">
                    {isAdminMode && <button onClick={() => deleteTeam(t.id)} className="absolute top-4 left-4 bg-red-900/60 text-white hover:bg-red-600 transition-all p-2 rounded z-20"><Icon name="x" size={16} color="#ffffff"/></button>}
-                  <div className="bg-neutral-900 p-10 text-center border-b-4 border-neutral-800">
+                  <div className="bg-neutral-900 p-10 text-center border-b-4 border-neutral-900">
                     <h3 className="font-stencil text-6xl text-white uppercase group-hover:text-[var(--street-orange)] transition-colors">{t.name}</h3>
                   </div>
                   <div className="p-10 bg-black/80 space-y-6">
                     {t.players?.map((p, i) => (
-                      <div key={i} className="flex justify-between items-center font-black text-sm">
+                      <div key={i} className="flex justify-between items-center font-black text-sm text-white">
                         <div className="flex gap-5 items-center">
                           <span className="text-[var(--street-orange)] font-stencil text-3xl opacity-30">#{i+1}</span> 
-                          <span className="text-white tracking-tight">{p.name}</span>
+                          <span className="tracking-tight">{typeof p === 'object' ? p.name : p}</span>
                         </div>
                         {isAdminMode && <span className="px-2 py-1 bg-white/10 text-[var(--street-yellow)] text-[10px] rounded">{p.size}</span>}
                       </div>
@@ -678,7 +718,7 @@ export default function App() {
                 <form onSubmit={handleRegisterTeam} className="space-y-8 text-right">
                   <div>
                     <label className="block text-neutral-400 font-black text-xs uppercase mb-3">שם הקבוצה</label>
-                    <input required type="text" value={regTeamName} onChange={e=>setRegTeamName(e.target.value)} placeholder="הכנס שם לקבוצה..." className="w-full bg-black border-2 border-neutral-900 p-5 text-white font-black text-xl focus:border-[var(--street-orange)] outline-none" />
+                    <input required type="text" value={regTeamName} onChange={e=>setRegTeamName(e.target.value)} placeholder="..." className="w-full bg-black border-2 border-neutral-900 p-5 text-white font-black text-xl focus:border-[var(--street-orange)] outline-none" />
                   </div>
                   <div className="space-y-4">
                     <label className="block text-neutral-400 font-black text-xs uppercase">סגל שחקנים ומידות</label>
@@ -763,7 +803,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="rule-strip">
                 <h3 className="text-xl font-black text-white mb-2 uppercase">02. סגל ורישום</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
+                <ul className="text-white text-sm space-y-3 font-bold text-right">
                   <li>• עד 4 שחקנים בקבוצה (3 על המגרש + מחליף).</li>
                   <li>• גילאי 16 ומעלה בלבד.</li>
                   <li>• יש להזין שמות מלאים ומדויקים בעת הרישום.</li>
@@ -771,7 +811,7 @@ export default function App() {
               </div>
               <div className="rule-strip">
                 <h3 className="text-xl font-black text-white mb-2 uppercase">03. מהלך המשחק</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
+                <ul className="text-white text-sm space-y-3 font-bold text-right">
                   <li>• משך כל משחק: 20 דקות זמן רץ.</li>
                   <li>• במקרה של שוויון: תוספת של 4 דקות להכרעה.</li>
                   <li>• המנצח מוציא כדור (Make it Take it).</li>
@@ -779,7 +819,7 @@ export default function App() {
               </div>
               <div className="rule-strip">
                 <h3 className="text-xl font-black text-white mb-2 uppercase">04. שיטת הניקוד</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
+                <ul className="text-white text-sm space-y-3 font-bold text-right">
                   <li>• קליעה מחוץ לקשת = 3 נקודות.</li>
                   <li>• קליעה בתוך הקשת = 2 נקודות.</li>
                   <li>• אין זריקות עונשין במהלך המשחקים.</li>
@@ -787,7 +827,7 @@ export default function App() {
               </div>
               <div className="rule-strip">
                 <h3 className="text-xl font-black text-white mb-2 uppercase">05. דירוג וטבלה</h3>
-                <ul className="text-white text-sm space-y-3 font-bold">
+                <ul className="text-white text-sm space-y-3 font-bold text-right">
                   <li>• ניצחון = 2 נקודות | הפסד = 1 נקודה.</li>
                   <li>• שוויון בטבלה יוכרע על פי הפרש סלים.</li>
                   <li>• 4 הקבוצות הראשונות עולות לאירוע הפיינל פור.</li>
