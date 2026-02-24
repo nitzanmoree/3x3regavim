@@ -24,7 +24,8 @@ const Icon = ({ name, size = 24, className = '' }) => {
     userPlus: 'user-plus',
     clipboard: 'clipboard-list',
     lock: 'lock',
-    award: 'award'
+    award: 'award',
+    plus: 'plus'
   };
   return (
     <img 
@@ -53,7 +54,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = "streetballregavim";
 
-// --- CSS STYLES (Street Art & Mature UI) ---
+// --- CSS STYLES ---
 const customStyles = `
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700;900&family=Karantina:wght@400;700&display=swap');
 
@@ -81,7 +82,6 @@ body {
   letter-spacing: 2px;
 }
 
-/* Header Graffiti Style */
 .header-graffiti {
   background: linear-gradient(to bottom, rgba(0,0,0,0.8), rgba(15,15,15,1)),
               url("https://www.transparenttextures.com/patterns/concrete-wall-2.png");
@@ -95,7 +95,6 @@ body {
     3px 3px 0px var(--street-orange),
     -1px -1px 0px #fff,
     6px 6px 12px rgba(0,0,0,0.8);
-  filter: drop-shadow(0 0 10px rgba(255, 87, 34, 0.3));
 }
 
 .splatter {
@@ -104,7 +103,6 @@ body {
   opacity: 0.15;
 }
 
-/* Refined Cards */
 .street-card {
   background: var(--concrete);
   border: 1px solid #333;
@@ -130,14 +128,12 @@ body {
   background: rgba(255, 87, 34, 0.05);
 }
 
-/* Hall of Fame Gold */
 .gold-card {
   background: linear-gradient(135deg, #151515 0%, #222 100%);
   border: 1px solid var(--street-yellow);
   box-shadow: 0 0 25px rgba(255, 179, 0, 0.1);
 }
 
-/* Rules Style - The one you liked */
 .rule-block {
   border-right: 4px solid var(--street-orange);
   padding: 1.5rem;
@@ -168,12 +164,13 @@ export default function App() {
   const [leagueStartDate, setLeagueStartDate] = useState('');
   const [makeupDates, setMakeupDates] = useState('');
   
-  // Form States (League Registration)
+  // Form States
   const [regTeamName, setRegTeamName] = useState('');
   const [regPlayers, setRegPlayers] = useState(['', '', '', '']);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const [newHofYear, setNewHofYear] = useState(new Date().getFullYear().toString());
+  const [manualHofTeam, setManualHofTeam] = useState('');
+  const [manualHofPlayers, setManualHofPlayers] = useState('');
 
   // --- BROWSER TITLE & AUTH ---
   useEffect(() => {
@@ -344,6 +341,25 @@ export default function App() {
     setActiveTab('hallOfFame');
   };
 
+  const addManualHof = async (e) => {
+    e.preventDefault();
+    if (!manualHofTeam.trim()) return showMessage('הזן שם קבוצה');
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', 'h_' + Date.now()), { 
+      year: newHofYear, 
+      teamName: manualHofTeam, 
+      players: manualHofPlayers 
+    });
+    setManualHofTeam(''); setManualHofPlayers('');
+    showMessage('נוסף להיכל התהילה');
+  };
+
+  const deleteHof = async (id) => {
+    if (window.confirm('האם למחוק את הרשומה מהיכל התהילה?')) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', id));
+      showMessage('הרשומה נמחקה מהענן');
+    }
+  };
+
   const resetSeasonOnly = async () => {
     if(!window.confirm('זה ינקה את העונה הנוכחית. היכל התהילה יישמר. להמשיך?')) return;
     const batch = writeBatch(db);
@@ -363,7 +379,7 @@ export default function App() {
     <div className="min-h-screen pb-20">
       <style>{customStyles}</style>
 
-      {/* HEADER - STREET ART STYLE */}
+      {/* HEADER */}
       <header className="header-graffiti pt-20 pb-16 px-4 text-center">
         <svg className="splatter top-4 left-10 w-24 h-24" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="var(--street-orange)" filter="blur(20px)"/></svg>
         <svg className="splatter bottom-0 right-20 w-40 h-40" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="var(--street-orange)" filter="blur(30px)"/></svg>
@@ -408,7 +424,7 @@ export default function App() {
         {activeTab === 'standings' && (
           <div className="animate-fade-in">
             <div className="flex items-baseline justify-between mb-6 border-b border-neutral-800 pb-2">
-               <h2 className="text-4xl font-stencil text-white tracking-widest">דירוג הקבוצות</h2>
+               <h2 className="text-4xl font-stencil text-white tracking-widest uppercase">דירוג הקבוצות</h2>
                <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest">Regular Season Stats</span>
             </div>
             <div className="street-card overflow-hidden rounded-lg">
@@ -438,7 +454,7 @@ export default function App() {
         {activeTab === 'registration' && (
           <div className="animate-fade-in max-w-xl mx-auto space-y-8">
             <div className="text-center">
-              <h2 className="text-5xl font-stencil text-white tracking-widest mb-2">הרשמה לעונה</h2>
+              <h2 className="text-5xl font-stencil text-white tracking-widest mb-2 uppercase">הרשמה לעונה</h2>
               <p className="text-neutral-500 font-bold uppercase tracking-wider">{leagueStage === 'registration' ? "הצטרפו לזירה עכשיו" : "ההרשמה סגורה כרגע"}</p>
             </div>
             {leagueStage === 'registration' ? (
@@ -467,7 +483,7 @@ export default function App() {
           </div>
         )}
 
-        {/* LEAGUE RULES - REVERTED TO PREVIOUS DESIGN */}
+        {/* LEAGUE RULES */}
         {activeTab === 'leagueRules' && (
           <div className="animate-fade-in max-w-3xl mx-auto space-y-6">
             <div className="text-center mb-10">
@@ -531,13 +547,35 @@ export default function App() {
                </div>
                <h2 className="text-6xl font-stencil text-white tracking-[0.2em] uppercase">היכל התהילה</h2>
             </div>
+
+            {isAdminMode && (
+              <div className="street-card p-6 border-[var(--street-yellow)] max-w-2xl mx-auto">
+                <h4 className="text-lg font-bold text-white mb-4 uppercase">ניהול היכל התהילה</h4>
+                <form onSubmit={addManualHof} className="flex flex-col md:flex-row gap-4">
+                  <input required type="text" placeholder="שנה" value={newHofYear} onChange={e=>setNewHofYear(e.target.value)} className="w-20 bg-black border p-2 text-white" />
+                  <input required type="text" placeholder="שם הקבוצה" value={manualHofTeam} onChange={e=>setManualHofTeam(e.target.value)} className="flex-1 bg-black border p-2 text-white" />
+                  <input type="text" placeholder="שחקנים" value={manualHofPlayers} onChange={e=>setManualHofPlayers(e.target.value)} className="flex-1 bg-black border p-2 text-white" />
+                  <button type="submit" className="bg-[var(--street-yellow)] text-black font-black px-4 py-2 uppercase hover:bg-white transition-all">הוסף</button>
+                </form>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {hallOfFame.map((w) => (
-                <div key={w.id} className="gold-card p-10 text-center relative group overflow-hidden">
-                  {isAdminMode && <button onClick={()=>deleteHof(w.id)} className="absolute top-4 left-4 text-neutral-700 hover:text-red-500"><Icon name="x" size={18}/></button>}
-                  <div className="text-[var(--street-yellow)] font-stencil text-4xl mb-4">{w.year}</div>
+                <div key={w.id} className="gold-card p-10 text-center relative group overflow-hidden animate-fade-in">
+                  {isAdminMode && (
+                    <button 
+                      onClick={() => deleteHof(w.id)} 
+                      className="absolute top-4 left-4 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white w-8 h-8 rounded flex items-center justify-center transition-all z-20 border border-red-600/50"
+                    >
+                      <Icon name="x" size={16}/>
+                    </button>
+                  )}
+                  <div className="text-[var(--street-yellow)] font-stencil text-4xl mb-4 tracking-widest">{w.year}</div>
                   <h3 className="text-5xl font-stencil text-white uppercase tracking-widest mb-6 group-hover:scale-110 transition-transform">{w.teamName}</h3>
-                  <div className="bg-black/50 py-3 px-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">{w.players}</div>
+                  <div className="bg-black/50 py-3 px-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest leading-relaxed">
+                    {w.players}
+                  </div>
                 </div>
               ))}
               {hallOfFame.length === 0 && <div className="col-span-full py-20 text-center text-neutral-700 font-stencil text-2xl uppercase border-2 border-dashed border-neutral-900 rounded-xl">ההיסטוריה טרם נכתבה</div>}
@@ -550,13 +588,15 @@ export default function App() {
           <div className="animate-fade-in space-y-10">
             {isAdminMode && pendingRegistrations.length > 0 && (
               <div className="space-y-4">
-                <h3 className="text-2xl font-bold text-[var(--street-yellow)] uppercase tracking-widest">בקשות רישום ({pendingRegistrations.length})</h3>
+                <h3 className="text-2xl font-bold text-[var(--street-yellow)] uppercase tracking-widest flex items-center gap-3">
+                  <Icon name="alertCircle" size={24} /> בקשות רישום ({pendingRegistrations.length})
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {pendingRegistrations.map(r => (
                     <div key={r.id} className="street-card p-5 flex justify-between items-center bg-black border-[var(--street-yellow)]">
                       <div>
                         <h4 className="text-white font-bold text-lg">{r.name}</h4>
-                        <p className="text-neutral-500 text-xs">{r.players.join(', ')}</p>
+                        <p className="text-neutral-500 text-xs font-bold">{r.players.join(', ')}</p>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={()=>approveRegistration(r)} className="bg-green-600 p-2 rounded hover:bg-green-500 transition-colors"><Icon name="check" size={20} className="text-white"/></button>
@@ -567,10 +607,13 @@ export default function App() {
                 </div>
               </div>
             )}
-            <h3 className="text-3xl font-stencil text-white tracking-widest uppercase">קבוצות מאושרות</h3>
+            <div className="flex items-center gap-3 border-b border-neutral-800 pb-2 mb-6">
+              <h3 className="text-3xl font-stencil text-white tracking-widest uppercase">קבוצות מאושרות</h3>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {teams.map(t => (
-                <div key={t.id} className="street-card overflow-hidden">
+                <div key={t.id} className="street-card overflow-hidden group">
+                   {isAdminMode && <button onClick={() => deleteTeam(t.id)} className="absolute top-4 left-4 bg-red-900/40 text-red-500 hover:bg-red-600 hover:text-white p-2 rounded transition-all z-20"><Icon name="x" size={16}/></button>}
                   <div className="bg-neutral-900 p-6 text-center border-b border-neutral-800">
                     <h3 className="font-stencil text-4xl text-white uppercase tracking-tighter">{t.name}</h3>
                   </div>
@@ -583,7 +626,7 @@ export default function App() {
           </div>
         )}
 
-        {/* SCHEDULE & PLAYOFFS (Standard Logic preserved) */}
+        {/* SCHEDULE */}
         {activeTab === 'schedule' && (
            <div className="animate-fade-in space-y-8 text-right">
              <h2 className="text-4xl font-stencil text-[var(--street-orange)] tracking-widest uppercase border-b border-neutral-800 pb-2">לוח המשחקים</h2>
@@ -604,6 +647,7 @@ export default function App() {
            </div>
         )}
 
+        {/* PLAYOFFS */}
         {activeTab === 'playoffs' && (
            <div className="animate-fade-in space-y-12">
              <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
@@ -615,7 +659,7 @@ export default function App() {
              </div>
 
              {finalMatch?.isPlayed && isAdminMode && (
-               <div className="street-card p-8 text-center border-[var(--street-yellow)] border-2">
+               <div className="street-card p-8 text-center border-[var(--street-yellow)] border-2 animate-fade-in">
                   <Icon name="crown" size={60} className="text-[var(--street-yellow)] mx-auto mb-4" />
                   <h3 className="text-3xl font-stencil text-white mb-6 tracking-widest">יש אלופה! הכתר והעלה להיכל</h3>
                   <div className="flex justify-center items-center gap-4">
@@ -630,11 +674,11 @@ export default function App() {
                   <div key={m.id} className={`street-card p-10 ${m.stage === 'final' ? 'border-[var(--street-yellow)] border-2 shadow-[0_0_40px_rgba(255,179,0,0.15)]' : 'border-neutral-800'}`}>
                     <div className="text-[10px] font-black text-neutral-600 mb-4 uppercase text-center">{m.roundName}</div>
                     <div className="flex justify-between items-center text-center">
-                      <div className="flex-1 font-black text-2xl text-white">{m.homeTeam.name}</div>
+                      <div className="flex-1 font-black text-2xl text-white uppercase">{m.homeTeam.name}</div>
                       <div className="px-6">
                         {m.isPlayed ? <div className="text-5xl font-black text-[var(--street-yellow)]">{m.homeScore}-{m.awayScore}</div> : <span className="font-stencil text-4xl text-neutral-800">VS</span>}
                       </div>
-                      <div className="flex-1 font-black text-2xl text-white">{m.awayTeam.name}</div>
+                      <div className="flex-1 font-black text-2xl text-white uppercase">{m.awayTeam.name}</div>
                     </div>
                     {!m.isPlayed && (
                       <div className="mt-8 pt-8 border-t border-neutral-800 flex justify-center items-center gap-4">
@@ -660,16 +704,16 @@ export default function App() {
               <input type="text" placeholder="Username" value={adminUser} onChange={e=>setAdminUser(e.target.value)} className="w-full bg-black border border-neutral-800 p-4 text-white font-bold" />
               <input type="password" placeholder="Password" value={adminPass} onChange={e=>setAdminPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} className="w-full bg-black border border-neutral-800 p-4 text-white font-bold" dir="ltr" />
             </div>
-            <button onClick={handleLogin} className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-colors tracking-widest text-xl">Login</button>
+            <button onClick={handleLogin} className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-all tracking-widest text-xl">Login</button>
           </div>
         </div>
       )}
 
-      {/* ADMIN CONTROL PANEL - RESET SEASON */}
+      {/* ADMIN CONTROL PANEL */}
       {isAdminMode && (
         <div className="fixed bottom-4 left-4 z-50 flex gap-2">
            <button onClick={resetSeasonOnly} className="bg-red-900/40 hover:bg-red-600 text-red-500 hover:text-white p-2 border border-red-900 transition-all text-[10px] font-black px-4 flex items-center gap-2 rounded uppercase tracking-widest shadow-xl">
-            <Icon name="history" size={14} /> Reset Current Season
+            <Icon name="history" size={14} /> Reset Season
           </button>
         </div>
       )}
