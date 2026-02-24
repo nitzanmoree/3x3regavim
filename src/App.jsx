@@ -146,16 +146,36 @@ export default function App() {
   const standings = useMemo(() => {
     const stats = {};
     teams.forEach(t => stats[t.id] = { id: t.id, name: t.name, players: t.players, points: 0, wins: 0, losses: 0, pf: 0, pa: 0, diff: 0 });
+    
     matches.filter(m => m.isPlayed && m.type === 'regular').forEach(m => {
       const hId = m.homeTeam.id, aId = m.awayTeam.id;
       if (!stats[hId] || !stats[aId]) return;
-      const hS = parseInt(m.homeScore), aS = parseInt(m.awayScore);
-      stats[hId].pf += hS; stats[hId].pa += aS;
-      stats[aId].pf += aS; stats[aId].pa += hS;
-      if (hS > aS) { stats[hId].wins += 1; stats[hId].points += 2; stats[aId].losses += 1; stats[aId].points += 1; }
-      else { stats[aId].wins += 1; stats[aId].points += 2; stats[hId].losses += 1; stats[hId].points += 1; }
+      
+      const hS = parseInt(m.homeScore) || 0;
+      const aS = parseInt(m.awayScore) || 0;
+
+      // סכימת נקודות זכות וחובה
+      stats[hId].pf += hS; 
+      stats[hId].pa += aS;
+      stats[aId].pf += aS; 
+      stats[aId].pa += hS;
+
+      if (hS > aS) { 
+        stats[hId].wins += 1; 
+        stats[hId].points += 2; 
+        stats[aId].losses += 1; 
+        stats[aId].points += 1; 
+      } else { 
+        stats[aId].wins += 1; 
+        stats[aId].points += 2; 
+        stats[hId].losses += 1; 
+        stats[hId].points += 1; 
+      }
     });
-    return Object.values(stats).map(s => ({ ...s, diff: s.pf - s.pa })).sort((a, b) => b.points - a.points || b.diff - a.diff);
+
+    return Object.values(stats)
+      .map(s => ({ ...s, diff: s.pf - s.pa }))
+      .sort((a, b) => b.points - a.points || b.diff - a.diff);
   }, [teams, matches]);
 
   // --- ACTIONS ---
@@ -354,19 +374,33 @@ export default function App() {
           <div className="street-card-light overflow-hidden rounded shadow-2xl animate-fade-in">
             <table className="w-full text-right">
               <thead className="bg-neutral-200 border-b-2 font-bold text-black">
-                <tr><th className="p-4">מקום</th><th className="p-4">קבוצה</th><th className="p-4 text-center">נק'</th><th className="p-4 text-center">נצ'</th><th className="p-4 text-center">הפ'</th></tr>
+                <tr>
+                  <th className="p-4">מקום</th>
+                  <th className="p-4">קבוצה</th>
+                  <th className="p-4 text-center">נק'</th>
+                  <th className="p-4 text-center">נצ'</th>
+                  <th className="p-4 text-center">הפ'</th>
+                  <th className="p-4 text-center">הפרש</th>
+                </tr>
               </thead>
               <tbody>
                 {standings.map((t, i) => (
                   <tr key={t.id} className="border-b hover:bg-white transition-colors text-black">
-                    <td className="p-4"><span className={`w-8 h-8 flex items-center justify-center rounded-sm font-bold ${i === 0 ? 'bg-[var(--street-orange)] text-white' : 'bg-neutral-800 text-white'}`}>{i+1}</span></td>
+                    <td className="p-4">
+                      <span className={`w-8 h-8 flex items-center justify-center rounded-sm font-bold ${i === 0 ? 'bg-[var(--street-orange)] text-white' : 'bg-neutral-800 text-white'}`}>
+                        {i+1}
+                      </span>
+                    </td>
                     <td className="p-4 font-bold text-lg">{t.name}</td>
                     <td className="p-4 text-center font-black text-[var(--street-orange)] text-2xl">{t.points}</td>
                     <td className="p-4 text-center font-bold">{t.wins}</td>
                     <td className="p-4 text-center font-bold">{t.losses}</td>
+                    <td className={`p-4 text-center font-black text-lg ${t.diff > 0 ? 'text-green-700' : t.diff < 0 ? 'text-red-700' : 'text-neutral-500'}`} dir="ltr">
+                      {t.diff > 0 ? `+${t.diff}` : t.diff}
+                    </td>
                   </tr>
                 ))}
-                {standings.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-neutral-500 font-bold">אין נתונים בטבלה עדיין.</td></tr>}
+                {standings.length === 0 && <tr><td colSpan="6" className="p-10 text-center text-neutral-500 font-bold">אין נתונים בטבלה עדיין.</td></tr>}
               </tbody>
             </table>
           </div>
