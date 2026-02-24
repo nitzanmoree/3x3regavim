@@ -94,8 +94,11 @@ export default function App() {
   const [newPlayers, setNewPlayers] = useState(['', '', '', '']);
   const [newHofYear, setNewHofYear] = useState(new Date().getFullYear().toString());
 
-  // --- AUTH ---
+  // --- BROWSER TITLE & AUTH ---
   useEffect(() => {
+    // עדכון כותרת הלשונית בדפדפן
+    document.title = "StreetBall Regavim";
+    
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, setUser);
   }, []);
@@ -195,13 +198,13 @@ export default function App() {
     const semis = matches.filter(m => m.type === 'playoff' && m.stage === 'semi' && m.isPlayed);
     if (semis.length < 2) return showMessage('סיים חצאי גמר קודם');
     const s1 = semis.find(m => m.id === 'ff_s1'), s2 = semis.find(m => m.id === 'ff_s2');
-    const w1 = s1.homeScore > s1.awayScore ? s1.homeTeam : s1.awayTeam;
-    const l1 = s1.homeScore > s1.awayScore ? s1.awayTeam : s1.homeTeam;
-    const w2 = s2.homeScore > s2.awayScore ? s2.homeTeam : s2.awayTeam;
-    const l2 = s2.homeScore > s2.awayScore ? s2.awayTeam : s2.homeTeam;
+    const winner1 = s1.homeScore > s1.awayScore ? s1.homeTeam : s1.awayTeam;
+    const loser1 = s1.homeScore > s1.awayScore ? s1.awayTeam : s1.homeTeam;
+    const winner2 = s2.homeScore > s2.awayScore ? s2.homeTeam : s2.awayTeam;
+    const loser2 = s2.homeScore > s2.awayScore ? s2.awayTeam : s2.homeTeam;
     const batch = writeBatch(db);
-    batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', 'ff_final'), { id: 'ff_final', roundName: 'הגמר הגדול', roundIndex: 1002, homeTeam: w1, awayTeam: w2, homeScore: '', awayScore: '', isPlayed: false, type: 'playoff', stage: 'final' });
-    batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', 'ff_3rd'), { id: 'ff_3rd', roundName: 'מקום 3-4', roundIndex: 1001, homeTeam: l1, awayTeam: l2, homeScore: '', awayScore: '', isPlayed: false, type: 'playoff', stage: '3rd' });
+    batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', 'ff_final'), { id: 'ff_final', roundName: 'הגמר הגדול', roundIndex: 1002, homeTeam: winner1, awayTeam: winner2, homeScore: '', awayScore: '', isPlayed: false, type: 'playoff', stage: 'final' });
+    batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'matches', 'ff_3rd'), { id: 'ff_3rd', roundName: 'מקום 3-4', roundIndex: 1001, homeTeam: loser1, awayTeam: loser2, homeScore: '', awayScore: '', isPlayed: false, type: 'playoff', stage: '3rd' });
     await batch.commit();
   };
 
@@ -227,28 +230,13 @@ export default function App() {
     if (window.confirm('למחוק מהיכל התהילה?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', id));
   };
 
-  // --- NEW SEASON RESET (Safe) ---
   const resetSeasonOnly = async () => {
     if(!window.confirm('אזהרה: פעולה זו תמחק את כל הקבוצות והמשחקים של העונה הנוכחית כדי להתחיל עונה חדשה. היכל התהילה יישאר ללא שינוי. להמשיך?')) return;
     
     const batch = writeBatch(db);
-    
-    // 1. Delete all current matches
-    matches.forEach(m => {
-      batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'matches', m.id));
-    });
-    
-    // 2. Delete all current teams
-    teams.forEach(t => {
-      batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'teams', t.id));
-    });
-    
-    // 3. Reset season meta
-    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { 
-      leagueStage: 'registration', 
-      leagueStartDate: '', 
-      makeupDates: '' 
-    });
+    matches.forEach(m => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'matches', m.id)));
+    teams.forEach(t => batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'teams', t.id)));
+    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { leagueStage: 'registration', leagueStartDate: '', makeupDates: '' });
     
     await batch.commit();
     showMessage('העונה אופסה בהצלחה. היכל התהילה נשמר!');
