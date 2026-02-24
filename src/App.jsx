@@ -16,7 +16,8 @@ const Icon = ({ name, size = 24, className = '' }) => {
     users: 'users',
     medal: 'medal',
     crown: 'crown',
-    star: 'star'
+    star: 'star',
+    history: 'history'
   };
   return (
     <img 
@@ -209,7 +210,6 @@ export default function App() {
     if (!finalMatch || !finalMatch.isPlayed) return;
     const winner = finalMatch.homeScore > finalMatch.awayScore ? finalMatch.homeTeam : finalMatch.awayTeam;
     
-    // Get full player names from the teams state to be accurate
     const winnerData = teams.find(t => t.id === winner.id) || winner;
     const playersStr = Array.isArray(winnerData.players) ? winnerData.players.join(', ') : '';
 
@@ -225,6 +225,34 @@ export default function App() {
 
   const deleteHof = async (id) => {
     if (window.confirm('למחוק מהיכל התהילה?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hallOfFame', id));
+  };
+
+  // --- NEW SEASON RESET (Safe) ---
+  const resetSeasonOnly = async () => {
+    if(!window.confirm('אזהרה: פעולה זו תמחק את כל הקבוצות והמשחקים של העונה הנוכחית כדי להתחיל עונה חדשה. היכל התהילה יישאר ללא שינוי. להמשיך?')) return;
+    
+    const batch = writeBatch(db);
+    
+    // 1. Delete all current matches
+    matches.forEach(m => {
+      batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'matches', m.id));
+    });
+    
+    // 2. Delete all current teams
+    teams.forEach(t => {
+      batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'teams', t.id));
+    });
+    
+    // 3. Reset season meta
+    batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'state'), { 
+      leagueStage: 'registration', 
+      leagueStartDate: '', 
+      makeupDates: '' 
+    });
+    
+    await batch.commit();
+    showMessage('העונה אופסה בהצלחה. היכל התהילה נשמר!');
+    setActiveTab('standings');
   };
 
   if (!isDBReady) return <div className="min-h-screen bg-black flex items-center justify-center text-white font-stencil text-2xl">טוען...</div>;
@@ -272,6 +300,7 @@ export default function App() {
                     <td className="p-4 text-center font-bold">{t.losses}</td>
                   </tr>
                 ))}
+                {standings.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-neutral-500 font-bold">אין נתונים בטבלה עדיין.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -374,23 +403,43 @@ export default function App() {
         )}
 
         {activeTab === 'teams' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {teams.map(t => (
-              <div key={t.id} className="street-card overflow-hidden group">
-                <div className="bg-neutral-900 p-8 text-center border-b-2 border-[var(--street-orange)] relative overflow-hidden">
-                  <div className="absolute inset-0 bg-[var(--street-orange)] opacity-0 group-hover:opacity-10 transition-opacity"></div>
-                  <h3 className="font-stencil text-4xl uppercase relative z-10 text-white tracking-widest">{t.name}</h3>
-                </div>
-                <div className="p-8 bg-black space-y-4">
-                  {t.players?.map((p, i) => (
-                    <div key={i} className="text-sm text-neutral-400 border-b border-neutral-900 pb-3 flex gap-4 font-black uppercase tracking-wider">
-                      <span className="text-[var(--street-orange)]">#{i+1}</span> {p}
-                    </div>
-                  ))}
+          <div className="space-y-8">
+             {isAdminMode && leagueStage === 'registration' && (
+              <div className="street-card p-6 mb-8 border-[var(--street-orange)]">
+                <h3 className="font-stencil text-2xl mb-4 text-white uppercase tracking-widest">רישום קבוצה חדשה</h3>
+                <div className="space-y-4">
+                  <input type="text" placeholder="שם הקבוצה" value={newTeamName} onChange={e=>setNewTeamName(e.target.value)} className="bg-black border border-neutral-800 p-4 w-full text-white font-bold" />
+                  <div className="grid grid-cols-2 gap-2">
+                    {[0,1,2,3].map(i => (
+                      <input key={i} type="text" placeholder={`שם שחקן ${i+1}`} value={newPlayers[i]} onChange={e => {
+                        const updated = [...newPlayers];
+                        updated[i] = e.target.value;
+                        setNewPlayers(updated);
+                      }} className="bg-black border border-neutral-800 p-3 text-sm text-white" />
+                    ))}
+                  </div>
+                  <button onClick={handleAddTeam} className="bg-white text-black w-full font-black py-4 hover:bg-[var(--street-orange)] transition-colors uppercase tracking-widest">הוסף קבוצה</button>
                 </div>
               </div>
-            ))}
-            {teams.length === 0 && <div className="col-span-full py-20 text-center text-neutral-500 font-stencil text-2xl">אין קבוצות רשומות עדיין.</div>}
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {teams.map(t => (
+                <div key={t.id} className="street-card overflow-hidden group">
+                  <div className="bg-neutral-900 p-8 text-center border-b-2 border-[var(--street-orange)] relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[var(--street-orange)] opacity-0 group-hover:opacity-10 transition-opacity"></div>
+                    <h3 className="font-stencil text-4xl uppercase relative z-10 text-white tracking-widest">{t.name}</h3>
+                  </div>
+                  <div className="p-8 bg-black space-y-4">
+                    {t.players?.map((p, i) => (
+                      <div key={i} className="text-sm text-neutral-400 border-b border-neutral-900 pb-3 flex gap-4 font-black uppercase tracking-wider">
+                        <span className="text-[var(--street-orange)]">#{i+1}</span> {p}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {teams.length === 0 && <div className="col-span-full py-20 text-center text-neutral-500 font-stencil text-2xl">אין קבוצות רשומות עדיין.</div>}
+            </div>
           </div>
         )}
       </main>
@@ -407,6 +456,18 @@ export default function App() {
             </div>
             <button onClick={handleLogin} className="w-full bg-[var(--street-orange)] text-black font-black py-5 uppercase hover:bg-white transition-colors tracking-widest text-xl">התחבר למערכת</button>
           </div>
+        </div>
+      )}
+
+      {/* ADMIN CONTROL FOR NEW SEASON RESET */}
+      {isAdminMode && (
+        <div className="fixed bottom-4 left-4 z-50 flex gap-2">
+           <button 
+            onClick={resetSeasonOnly} 
+            className="bg-red-900/40 hover:bg-red-600 text-red-500 hover:text-white p-2 border border-red-900 transition-all text-xs font-bold px-4 flex items-center gap-2"
+          >
+            <Icon name="history" size={14} /> התחל עונה חדשה (נקה ליגה)
+          </button>
         </div>
       )}
 
